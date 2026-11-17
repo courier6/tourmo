@@ -138,6 +138,13 @@ export function DateForm({ dateId }: { dateId?: string }) {
             ['off', 'Off day'],
             ['travel', 'Travel day'],
           ]}
+          note={
+            existing?.offer && kind !== 'show' ? (
+              <span className="bad" role="alert">
+                Saving this as {kind === 'off' ? 'an off day' : 'a travel day'} removes its offer{existing.offer.raw ? `, "${existing.offer.raw}"` : ''}. It cannot be brought back.
+              </span>
+            ) : undefined
+          }
         />
         <MilesField label="Miles from the previous stop" value={miles} onChange={setMiles} leg={legInto(tour, { id: existing?.id, date, city, place, milesFromPrevious: miles })} />
         {kind === 'show' && <MoneyField label="Planned merch" value={merch} onChange={setMerch} placeholder={String(merchFigure / 100)} note={merch === undefined ? 'Left empty, it uses the merch per show from Rates.' : undefined} />}
