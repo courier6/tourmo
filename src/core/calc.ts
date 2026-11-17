@@ -238,16 +238,22 @@ export function budget(tour: Tour): Budget {
 
   const v = tour.vehicle;
   const planVan = roundToDollar(rates.vanDailyRate.value * rates.vanDays.value);
-  const vehicle: BudgetLine = {
-    id: 'vehicle',
-    kind: 'vehicle',
-    label: 'Van rental',
-    direction: 'out',
-    plan: planVan,
-    now: trackTourWide(planVan, v.actual, v.final),
-    how: `${formatMoney(rates.vanDailyRate.value)}${rates.vanDailyRate.estimated ? ' (estimate)' : ''} × ${plural(rates.vanDays.value, 'day')}`,
-    progress: v.actual === undefined ? 'Not paid yet' : `${formatMoney(v.actual)} paid${v.final ? ', final' : ' so far'}`,
-  };
+  // A van that is not rented, with nothing paid for one, has no rental line.
+  const vehicle: BudgetLine[] =
+    planVan === 0 && v.actual === undefined
+      ? []
+      : [
+          {
+            id: 'vehicle',
+            kind: 'vehicle',
+            label: 'Van rental',
+            direction: 'out',
+            plan: planVan,
+            now: trackTourWide(planVan, v.actual, v.final),
+            how: `${formatMoney(rates.vanDailyRate.value)}${rates.vanDailyRate.estimated ? ' (estimate)' : ''} × ${plural(rates.vanDays.value, 'day')}`,
+            progress: v.actual === undefined ? 'Not paid yet' : `${formatMoney(v.actual)} paid${v.final ? ', final' : ' so far'}`,
+          },
+        ];
 
   const planFuel = fuelPlan(tour);
   const spent = fuelSpent(tour);
@@ -334,7 +340,7 @@ export function budget(tour: Tour): Budget {
       ]
     : [];
 
-  const expenses = [...commissions, ...merchCost, vehicle, fuel, lodging, ...food, ...tourOut, ...dateExtras];
+  const expenses = [...commissions, ...merchCost, ...vehicle, fuel, lodging, ...food, ...tourOut, ...dateExtras];
 
   // Totals are sums of the rounded lines, so the screen always adds up.
   const totals = (pick: (l: BudgetLine) => Money): Totals => {

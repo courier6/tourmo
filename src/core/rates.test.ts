@@ -175,6 +175,25 @@ describe('van', () => {
   });
 });
 
+describe('a van that is not rented', () => {
+  const vanLine = (t: Tour) => budget(t).expenses.find((l) => l.kind === 'vehicle');
+
+  it('has no rental line, and fuel is planned all the same', () => {
+    const t = run();
+    expect(vanLine(t)?.plan).toBeGreaterThan(0);
+    t.vehicle.dailyRate = 0;
+    expect(vanLine(t)).toBeUndefined();
+    expect(budget(t).expenses.find((l) => l.kind === 'fuel')?.plan).toBeGreaterThan(0);
+  });
+
+  it('shows the line again once something is paid for a van', () => {
+    const t = run();
+    t.vehicle.dailyRate = 0;
+    t.vehicle.actual = $(180);
+    expect(vanLine(t)).toMatchObject({ plan: 0, now: $(180) });
+  });
+});
+
 describe('the plan from estimates', () => {
   it('has no zeros where a figure can be estimated', () => {
     const t = run();

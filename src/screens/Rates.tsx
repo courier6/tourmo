@@ -164,6 +164,9 @@ export function VanSection({ planning = false }: { planning?: boolean }) {
   const { tour, update } = useTour();
   const setRate = useSetRate();
   const { vanDailyRate, vanDays } = tourRates(tour);
+  // A daily rate of 0 that the band set is a van that is not rented.
+  const own = tour.vehicle.dailyRate === 0 && !tour.estimated?.includes('vanDailyRate');
+  const paid = tour.vehicle.actual !== undefined;
   const daysNote = !vanDays.typed
     ? tour.dates.length
       ? `Days: worked out from the dates, ${vanDays.basis}.`
@@ -175,16 +178,38 @@ export function VanSection({ planning = false }: { planning?: boolean }) {
     <section className="section" aria-labelledby="r-van">
       <div className="section-head">
         <h2 className="heading" id="r-van">
-          Van rental
+          Van
         </h2>
         <Amount value={Math.round(vanDailyRate.value * vanDays.value)} />
       </div>
-      <div className="grid-2">
-        <MoneyField label="Daily rate" value={tour.vehicle.dailyRate} placeholder={asDollars(vanDailyRate.estimate)} onChange={(v) => setRate('vanDailyRate', (t) => (t.vehicle.dailyRate = v))} />
-        <NumberField label="Days" suffix="days" value={tour.vehicle.days} placeholder={String(vanDays.estimate)} onChange={(v) => update((t) => (t.vehicle.days = v))} />
-      </div>
-      <Notes lines={[rateNote('Daily rate', vanDailyRate, formatMoney, ' Type 0 if you are not renting.'), daysNote]} />
-      {!planning && (
+      <SelectField
+        label="The van is"
+        value={own ? 'own' : 'rented'}
+        onChange={(v) =>
+          setRate('vanDailyRate', (t) => {
+            if (v === 'own') t.vehicle.dailyRate = 0;
+            else delete t.vehicle.dailyRate;
+          })
+        }
+        options={[
+          ['rented', 'Rented'],
+          ['own', 'Our own'],
+        ]}
+      />
+      {own ? (
+        <p className="note" style={{ marginTop: 8 }}>
+          No rental is planned. Fuel is planned below. Repairs, insurance or wear can be added as an expense on the budget.
+        </p>
+      ) : (
+        <>
+          <div className="grid-2">
+            <MoneyField label="Daily rate" value={tour.vehicle.dailyRate} placeholder={asDollars(vanDailyRate.estimate)} onChange={(v) => setRate('vanDailyRate', (t) => (t.vehicle.dailyRate = v))} />
+            <NumberField label="Days" suffix="days" value={tour.vehicle.days} placeholder={String(vanDays.estimate)} onChange={(v) => update((t) => (t.vehicle.days = v))} />
+          </div>
+          <Notes lines={[rateNote('Daily rate', vanDailyRate, formatMoney, ' A quote with the waiver and tax in it is the better figure.'), daysNote]} />
+        </>
+      )}
+      {!planning && (!own || paid) && (
         <>
           <MoneyField label="Paid so far" value={tour.vehicle.actual} onChange={(v) => update((t) => (t.vehicle.actual = v))} note="Leave empty until something is paid." />
           <Check label="That is the final van bill" checked={!!tour.vehicle.final} onChange={(v) => update((t) => (t.vehicle.final = v))} />
