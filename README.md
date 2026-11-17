@@ -31,6 +31,10 @@ with none, and the browser's "Add to Home Screen" installs it with its own
 icon. A new build reaches a phone the next time the app is opened after being
 fully closed. `npm run preview` serves `dist/` on this machine to try it.
 
+On GitHub, a push to `main` does this by itself:
+`.github/workflows/deploy.yml` runs the tests, builds, and publishes `dist/`
+to GitHub Pages.
+
 The hosted app has no lookup server (see "Not built yet"), so it plans with
 the figures saved in the build, straight-line drive estimates and whatever
 you type.
@@ -204,7 +208,6 @@ Parts of the data model worth knowing:
 
 ## Not built yet
 
-- A hosted copy. The build is ready for any static host; none is set up.
 - Other currencies, kilometres and litres, for touring outside the United
   States. Every figure is in dollars, miles and gallons.
 - What is agreed on settlement night beyond the payout: a deposit already
