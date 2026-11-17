@@ -80,8 +80,17 @@ export function resetFigures(): void {
   current = bundled;
 }
 
-/** A new tour is planned with this many rooms a night until the band says otherwise. */
-export const DEFAULT_ROOMS = 2;
+/** A new tour is planned for this many people until the band says otherwise. */
+export const DEFAULT_PEOPLE = 4;
+
+/** Dollars for one person's food for one day, until the band sets its own per diem. */
+export const DEFAULT_PER_DIEM = 20;
+
+/** Everyone who travels: the figure behind the food plan and the rooms. */
+export const peopleOn = (tour: Tour): number => tour.people ?? DEFAULT_PEOPLE;
+
+/** Rooms a night: the band's own count, otherwise one for every two people. */
+export const roomsFor = (tour: Tour): number => tour.lodgingRooms ?? Math.ceil(peopleOn(tour) / 2);
 
 // ---------- gas, by where the tour drives ----------
 
@@ -145,7 +154,7 @@ export function roomRate(area: string | undefined, state: string | undefined, is
 
 /** Rooms a night, times the room rate averaged over the nights away from home, rounded up to $5. */
 function lodgingEstimate(tour: Tour, data: Estimates): { value: Money; basis: string } {
-  const rooms = tour.lodgingRooms ?? DEFAULT_ROOMS;
+  const rooms = roomsFor(tour);
   const nights = tour.dates.filter((d) => !sameCity(d.city, tour.homeCity));
   const rates = nights.map((d) => roomRate(d.place?.area, stateOf(d.city), d.date, data));
   const room = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : data.lodging.standard;
@@ -166,7 +175,7 @@ export function lodgingFor(tour: Tour, date: Pick<TourDate, 'city' | 'place' | '
   if (sameCity(date.city, tour.homeCity)) return 0;
   const own = tour.lodgingPerNightDefault !== undefined && !(tour.estimated ?? []).includes('lodgingPerNight');
   if (own) return tour.lodgingPerNightDefault ?? 0;
-  const rooms = tour.lodgingRooms ?? DEFAULT_ROOMS;
+  const rooms = roomsFor(tour);
   return dollars(roundUp(roomRate(date.place?.area, stateOf(date.city), date.date, data) * rooms, 5));
 }
 
@@ -178,6 +187,13 @@ export function suggestedVanDays(tour: Tour): number {
   const last = tour.dates.at(-1);
   if (!first || !last) return 0;
   return daysBetween(first.date, last.date) + 2;
+}
+
+/** Days fed on the road: the first date to the last, both counted. */
+export function tourDays(tour: Tour): number {
+  const first = tour.dates[0];
+  const last = tour.dates.at(-1);
+  return first && last ? daysBetween(first.date, last.date) + 1 : 0;
 }
 
 // ---------- every rate, typed or estimated ----------
@@ -204,6 +220,10 @@ export interface TourRates {
   lodgingPerNight: Rate; // cents
   /** Rooms a night behind the lodging estimate. */
   rooms: number;
+  /** Food for one person for one day. */
+  perDiem: Rate; // cents
+  /** Everyone who travels. */
+  people: number;
 }
 
 export function tourRates(tour: Tour, data: Estimates = current): TourRates {
@@ -234,7 +254,9 @@ export function tourRates(tour: Tour, data: Estimates = current): TourRates {
     gasPrice: rate(tour.fuel.pricePerGallon, 'gasPrice', gas.value, gas.basis),
     merchPerShow: merch,
     lodgingPerNight: rate(tour.lodgingPerNightDefault, 'lodgingPerNight', lodging.value, lodging.basis),
-    rooms: tour.lodgingRooms ?? DEFAULT_ROOMS,
+    rooms: roomsFor(tour),
+    perDiem: rate(tour.perDiem, 'perDiem', dollars(DEFAULT_PER_DIEM), 'a common per diem on a van tour'),
+    people: peopleOn(tour),
   };
 }
 
@@ -243,6 +265,7 @@ const KEPT: [EstimatedRate, (r: TourRates) => Rate, (tour: Tour, value: number) 
   ['mpg', (r) => r.mpg, (t, v) => (t.fuel.mpg = v)],
   ['gasPrice', (r) => r.gasPrice, (t, v) => (t.fuel.pricePerGallon = v)],
   ['lodgingPerNight', (r) => r.lodgingPerNight, (t, v) => (t.lodgingPerNightDefault = v)],
+  ['perDiem', (r) => r.perDiem, (t, v) => (t.perDiem = v)],
 ];
 
 /**

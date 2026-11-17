@@ -12,6 +12,7 @@ import {
   dollars,
   ESTIMATES,
   finishSetup,
+  foodPlan,
   fuelPlan,
   gasPriceIn,
   isEstimates,
@@ -204,7 +205,8 @@ describe('the plan from estimates', () => {
     expect(t.lodgingPerNightDefault).toBe($(230));
     expect(t.fuel.mpg).toBe(17);
     expect(t.vehicle.days).toBeUndefined(); // days stay worked out from the dates
-    expect([...(t.estimated ?? [])].sort()).toEqual(['gasPrice', 'lodgingPerNight', 'vanDailyRate']);
+    expect(t.perDiem).toBe($(20));
+    expect([...(t.estimated ?? [])].sort()).toEqual(['gasPrice', 'lodgingPerNight', 'perDiem', 'vanDailyRate']);
 
     const later: Estimates = { ...data, gas: { ...data.gas, us: 6, regions: {}, states: {} }, van: { ...data.van, dailyRate: 400 } };
     const rates = tourRates(t, later);
@@ -263,6 +265,49 @@ describe('each night planned for its own city', () => {
   });
 });
 
+describe('people and food', () => {
+  const foodLine = (t: Tour) => budget(t).expenses.find((l) => l.kind === 'food');
+
+  it('plans food for everyone, every day from the first date to the last', () => {
+    const t = run();
+    expect(tourRates(t, data)).toMatchObject({ people: 4, perDiem: { value: $(20), typed: false, estimated: true } });
+    expect(foodPlan(t)).toBe($(240)); // $20 × 4 people × 3 days
+    t.people = 5;
+    t.perDiem = $(25);
+    expect(foodPlan(t)).toBe($(375));
+    expect(foodLine(t)).toMatchObject({ plan: $(375), how: '$25 × 5 people × 3 days' });
+  });
+
+  it('has no food line when the per diem is 0 and nothing was spent', () => {
+    const t = run();
+    t.perDiem = 0;
+    expect(foodLine(t)).toBeUndefined();
+    t.dates[1].food = $(35);
+    expect(foodLine(t)).toMatchObject({ plan: 0, now: $(35) });
+  });
+
+  it('counts food as the larger of plan and spent until spending is finished', () => {
+    const t = run();
+    t.dates[0].food = $(60);
+    t.dates[1].food = $(95);
+    expect(foodLine(t)).toMatchObject({ plan: $(240), now: $(240), progress: '$155 spent, $85 left' });
+    t.foodFinal = true;
+    expect(foodLine(t)?.now).toBe($(155));
+    t.dates[2].food = $(120);
+    expect(foodLine(t)).toMatchObject({ now: $(275), progress: '$275 spent, $35 over' });
+  });
+
+  it('plans a room for every two people, unless the band set the rooms', () => {
+    const t = run();
+    expect(tourRates(t, data).rooms).toBe(2);
+    t.people = 5;
+    expect(tourRates(t, data).rooms).toBe(3);
+    expect(lodgingFor(t, t.dates[2], data)).toBe($(340)); // 3 rooms at the standard 113, rounded up
+    t.lodgingRooms = 1;
+    expect(tourRates(t, data).rooms).toBe(1);
+  });
+});
+
 describe('fresher figures', () => {
   afterEach(resetFigures);
 
@@ -318,6 +363,8 @@ describe('starting from the last tour', () => {
     last.vehicle.dailyRate = $(140);
     last.merchPerShowDefault = $(200);
     last.lodgingRooms = 3;
+    last.people = 5;
+    last.perDiem = $(25);
     last.dates[1].merch.actual = $(260);
     last.dates[2].merch.actual = $(331);
     keepEstimates(last, data); // gas, mileage and lodging were estimates
@@ -338,6 +385,8 @@ describe('starting from the last tour', () => {
       merchPerShow: $(295), // what the two shows really sold, to the nearest $5
       lodgingPerNight: undefined,
       lodgingRooms: 3,
+      people: 5,
+      perDiem: $(25),
     });
 
     const next = blankTour('t9', 'Summer run', 'Dallas, TX', undefined, carried);

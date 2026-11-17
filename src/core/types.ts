@@ -27,7 +27,7 @@ export interface KeptDrive {
 }
 
 /** The outside figures a tour can hold as estimates rather than as the band's own. */
-export type EstimatedRate = 'vanDailyRate' | 'mpg' | 'gasPrice' | 'lodgingPerNight';
+export type EstimatedRate = 'vanDailyRate' | 'mpg' | 'gasPrice' | 'lodgingPerNight' | 'perDiem';
 
 export interface Tour {
   id: string;
@@ -38,9 +38,12 @@ export interface Tour {
   // Any rate left empty is estimated or worked out; see rates.ts. 0 is a real figure.
   vehicle: { dailyRate?: Money; days?: number; actual?: Money; final?: boolean };
   fuel: { mpg?: number; pricePerGallon?: Money; final?: boolean };
+  people?: number; // added: everyone who travels, hired players and crew included. Empty = 4
+  perDiem?: Money; // added: food for one person for one day
+  foodFinal?: boolean; // added: food spending is finished, so what was spent is the figure
   merchPerShowDefault?: Money;
   lodgingPerNightDefault?: Money;
-  lodgingRooms?: number; // added: rooms a night, behind the lodging estimate
+  lodgingRooms?: number; // added: rooms a night, behind the lodging estimate. Empty = one for every two people
   estimated?: EstimatedRate[]; // added: rates that hold an estimate kept from setup
   ratesFrom?: string; // added: the earlier tour a new tour's rates were started from
   dates: TourDate[]; // ordered by date
@@ -76,6 +79,7 @@ export interface TourDate {
   merch: PlanActual; // plan defaults from the tour, editable per date
   lodging: PlanActual; // plan is 0 on nights with no lodging
   fuelFillUps: Money[]; // logged on the day they are bought
+  food?: Money; // added: food and per diems paid that day
   lines: ExtraLine[]; // per-date extras, in or out, e.g. a lodging buyout
   settled: boolean;
 }

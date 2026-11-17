@@ -5,7 +5,7 @@
 import { addDays, cityName, daysBetween } from './dates';
 import { floorToDollar, formatMoney, formatNumber, formatPercent, percentOf, roundToDollar } from './money';
 import { guaranteedMinimum, payout } from './payout';
-import { tourRates } from './rates';
+import { tourDays, tourRates } from './rates';
 import { legInto, routeMiles, unknownLegs } from './route';
 import type { Commission, ExtraLine, Money, Tour, TourDate } from './types';
 
@@ -68,6 +68,16 @@ export function fuelForDrive(tour: Tour, date: TourDate): { miles: number; cost:
   return { miles, cost: mpg.value > 0 ? roundToDollar((miles / mpg.value) * gasPrice.value) : 0 };
 }
 
+// ---------- food ----------
+
+/** Everyone who travels, fed every day from the first date to the last. */
+export function foodPlan(tour: Tour): Money {
+  const { perDiem, people } = tourRates(tour);
+  return roundToDollar(perDiem.value * people * tourDays(tour));
+}
+
+export const foodSpent = (tour: Tour): Money => sum(tour.dates.map((d) => d.food ?? 0));
+
 // ---------- commissions ----------
 
 function commissionBase(c: Commission, show: Money, merch: Money): Money {
@@ -87,7 +97,7 @@ function commissionOnDate(c: Commission, date: TourDate): { plan: Money; now: Mo
 
 // ---------- the budget: one list of lines, each with plan and now ----------
 
-export type LineKind = 'shows' | 'merch' | 'additional' | 'commission' | 'vehicle' | 'fuel' | 'lodging' | 'extra' | 'dateExtras';
+export type LineKind = 'shows' | 'merch' | 'additional' | 'commission' | 'vehicle' | 'fuel' | 'lodging' | 'food' | 'extra' | 'dateExtras';
 
 export interface BudgetLine {
   id: string;
@@ -243,6 +253,27 @@ export function budget(tour: Tour): Budget {
     progress: `${nightsIn} of ${plural(nights.length, 'night')} in`,
   };
 
+  // Food is bought day by day against one figure for the tour, as fuel is.
+  // A tour planned with no food figure and nothing spent has no food line.
+  const planFood = foodPlan(tour);
+  const eaten = foodSpent(tour);
+  const days = tourDays(tour);
+  const food: BudgetLine[] =
+    planFood > 0 || eaten > 0
+      ? [
+          {
+            id: 'food',
+            kind: 'food',
+            label: 'Food',
+            direction: 'out',
+            plan: planFood,
+            now: trackTourWide(planFood, eaten, tour.foodFinal),
+            how: `${formatMoney(rates.perDiem.value)}${rates.perDiem.estimated ? ' (estimate)' : ''} × ${rates.people} ${rates.people === 1 ? 'person' : 'people'} × ${plural(days, 'day')}`,
+            progress: eaten > planFood ? `${formatMoney(eaten)} spent, ${formatMoney(eaten - planFood)} over` : `${formatMoney(eaten)} spent, ${formatMoney(planFood - eaten)} left`,
+          },
+        ]
+      : [];
+
   const tourOut: BudgetLine[] = tour.lines
     .filter((l) => l.direction === 'out')
     .map((l) => ({
@@ -272,7 +303,7 @@ export function budget(tour: Tour): Budget {
       ]
     : [];
 
-  const expenses = [...commissions, vehicle, fuel, lodging, ...tourOut, ...dateExtras];
+  const expenses = [...commissions, vehicle, fuel, lodging, ...food, ...tourOut, ...dateExtras];
 
   // Totals are sums of the rounded lines, so the screen always adds up.
   const totals = (pick: (l: BudgetLine) => Money): Totals => {
@@ -352,7 +383,7 @@ export interface Cause {
 }
 
 export interface DateResult {
-  /** Positive = ahead of plan. Fuel is left out: it has no per-date plan. */
+  /** Positive = ahead of plan. Fuel and food are left out: they have no per-date plan. */
   vsPlan: Money;
   causes: Cause[];
   /** False until any actual is entered for the date. */
@@ -389,7 +420,7 @@ export function dateAgainstPlan(tour: Tour, date: TourDate): DateResult {
   for (const l of date.lines.filter((x) => x.direction === 'out')) add(l.label, 'out', l.plan, l.actual);
 
   const vsPlan = sum(causes.map((c) => (c.direction === 'in' ? c.change : -c.change)));
-  return { vsPlan, causes, hasActuals: entered > 0 || date.fuelFillUps.length > 0 };
+  return { vsPlan, causes, hasActuals: entered > 0 || date.fuelFillUps.length > 0 || date.food !== undefined };
 }
 
 export type DateStatus = 'settled' | 'tonight' | 'upcoming' | 'unsettled';

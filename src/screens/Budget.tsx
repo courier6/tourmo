@@ -138,7 +138,7 @@ function AddExpense() {
       }}
     >
       <TextField label="What is it for?" value={label} onChange={setLabel} />
-      <MoneyField label="Planned amount" value={amount} onChange={setAmount} note="A tour-wide cost, such as insurance or a trailer." />
+      <MoneyField label="Planned amount" value={amount} onChange={setAmount} note="A tour-wide cost, such as a hired player's fee, insurance or a trailer." />
       <div className="btn-row">
         <button className="btn quiet" type="button" onClick={close}>
           Cancel
@@ -204,7 +204,7 @@ function Plan({ b }: { b: BudgetData }) {
 // ---------- Actuals ----------
 
 function LedgerRow({ line }: { line: BudgetLine }) {
-  const to = line.kind === 'extra' ? lineLink(line) : line.kind === 'vehicle' || line.kind === 'fuel' ? '/rates' : undefined;
+  const to = line.kind === 'extra' ? lineLink(line) : line.kind === 'vehicle' || line.kind === 'fuel' || line.kind === 'food' ? '/rates' : undefined;
   return (
     <tr>
       <th scope="row">

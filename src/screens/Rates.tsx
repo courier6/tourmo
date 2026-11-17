@@ -2,7 +2,7 @@
 // The sections are shared with the last step of setting up a new tour.
 
 import { useState } from 'react';
-import { DEFAULT_ROOMS, findLine, formatMoney, formatNumber, fuelPlan, legHome, newId, routeMiles, tourRates, type Commission, type EstimatedRate, type Money, type Rate, type Tour } from '../core';
+import { DEFAULT_PEOPLE, findLine, foodPlan, formatMoney, formatNumber, fuelPlan, legHome, newId, peopleOn, routeMiles, tourDays, tourRates, type Commission, type EstimatedRate, type Money, type Rate, type Tour } from '../core';
 import { Amount, Back, Check, MoneyField, NumberField, SelectField, TextField } from '../components';
 import { go } from '../router';
 import { useTour, useTours } from '../store';
@@ -38,6 +38,61 @@ function useSetRate() {
       write(t);
       t.estimated = t.estimated?.filter((k) => k !== key);
     });
+}
+
+/** A kept lodging estimate is worked out from the rooms, so it is let go when they change. */
+function releaseLodgingEstimate(t: Tour) {
+  if (!t.estimated?.includes('lodgingPerNight')) return;
+  delete t.lodgingPerNightDefault;
+  t.estimated = t.estimated.filter((k) => k !== 'lodgingPerNight');
+}
+
+/** Who travels, and what feeding them comes to. The headcount also sets the rooms. */
+export function PeopleSection({ planning = false }: { planning?: boolean }) {
+  const { tour, update } = useTour();
+  const setRate = useSetRate();
+  const { perDiem, people } = tourRates(tour);
+  const days = tourDays(tour);
+  return (
+    <section className="section" aria-labelledby="r-people">
+      <div className="section-head">
+        <h2 className="heading" id="r-people">
+          People and food
+        </h2>
+        <Amount value={foodPlan(tour)} />
+      </div>
+      <div className="grid-2">
+        <NumberField
+          label="People on the road"
+          suffix="people"
+          value={tour.people}
+          placeholder={String(DEFAULT_PEOPLE)}
+          onChange={(v) =>
+            update((t) => {
+              t.people = v;
+              // The rooms follow the headcount unless the band set them.
+              if (t.lodgingRooms === undefined) releaseLodgingEstimate(t);
+            })
+          }
+        />
+        <MoneyField label="Food, each, a day" value={tour.perDiem} placeholder={asDollars(perDiem.estimate)} onChange={(v) => setRate('perDiem', (t) => (t.perDiem = v))} />
+      </div>
+      <Notes
+        lines={[
+          tour.people === undefined ? `People: ${DEFAULT_PEOPLE} until you say otherwise. Count everyone who travels, hired players and crew too.` : '',
+          rateNote('Food', perDiem, formatMoney, ' Type 0 to leave food out of the plan.'),
+          days ? `The food plan is ${people} ${people === 1 ? 'person' : 'people'} × ${days} ${days === 1 ? 'day' : 'days'} × the daily figure.` : 'The food plan is worked out once there are dates.',
+          planning ? '' : 'What is spent on food is entered on each date.',
+        ]}
+      />
+      {!planning && (
+        <>
+          <Check label="Food spending is finished" checked={!!tour.foodFinal} onChange={(v) => update((t) => (t.foodFinal = v))} />
+          <p className="note">Until this is ticked, food counts as the larger of the plan and what has been spent.</p>
+        </>
+      )}
+    </section>
+  );
 }
 
 export function CommissionsSection() {
@@ -189,15 +244,11 @@ export function DefaultsSection({ planning = false }: { planning?: boolean }) {
           label="Rooms a night"
           suffix="rooms"
           value={tour.lodgingRooms}
-          placeholder={String(DEFAULT_ROOMS)}
+          placeholder={String(Math.ceil(peopleOn(tour) / 2))}
           onChange={(v) =>
             update((t) => {
               t.lodgingRooms = v;
-              // The lodging estimate follows the rooms, so a kept one is let go.
-              if (t.estimated?.includes('lodgingPerNight')) {
-                delete t.lodgingPerNightDefault;
-                t.estimated = t.estimated.filter((k) => k !== 'lodgingPerNight');
-              }
+              releaseLodgingEstimate(t);
             })
           }
         />
@@ -206,6 +257,7 @@ export function DefaultsSection({ planning = false }: { planning?: boolean }) {
       <Notes
         lines={[
           merchPerShow.typed ? '' : `Merch: ${merchPerShow.basis}. Type what a show usually sells.`,
+          tour.lodgingRooms === undefined ? `Rooms: one for every two people, so ${rooms} for ${peopleOn(tour)}.` : '',
           rateNote('Lodging', lodgingPerNight, formatMoney) || `Lodging: your figure, so the ${rooms === 1 ? 'room' : 'rooms'} count is not used.`,
           planning
             ? 'Merch is planned for every show, and lodging for every night away from the home city. Each date can be changed later under Dates.'
@@ -251,6 +303,7 @@ export function Rates() {
         <MilesField label="Miles home from the last date" value={tour.milesHome} onChange={(v) => update((t) => (t.milesHome = v))} leg={legHome(tour)} />
       </section>
 
+      <PeopleSection />
       <CommissionsSection />
       <VanSection />
       <FuelSection />

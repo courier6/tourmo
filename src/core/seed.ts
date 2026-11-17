@@ -1,6 +1,7 @@
 // Sample tours. "Spring run" is the handoff's worked example, mid-tour with
 // three of five shows settled. The two before it are finished tours, so the
-// tour list has past runs to look back on. All figures are invented.
+// tour list has past runs to look back on. All figures are invented. The
+// handoff's example plans no food, so each sample sets its per diem to 0.
 
 import { dollars } from './money';
 import { parseOffer, toOffer } from './parser';
@@ -20,6 +21,7 @@ export function seedTour(): Tour {
     ],
     vehicle: { dailyRate: $(120), actual: $(720) },
     fuel: { mpg: 15, pricePerGallon: $(3.2) },
+    perDiem: 0,
     merchPerShowDefault: $(300),
     lodgingPerNightDefault: $(200),
     milesHome: 660,
@@ -135,6 +137,7 @@ function fallRun(): Tour {
     ],
     vehicle: { dailyRate: $(120), actual: $(600), final: true },
     fuel: { mpg: 15, pricePerGallon: $(3.05), final: true },
+    perDiem: 0,
     merchPerShowDefault: $(250),
     lodgingPerNightDefault: $(180),
     milesHome: 190,
@@ -159,6 +162,7 @@ function summerWeekender(): Tour {
     ],
     vehicle: { dailyRate: $(110), actual: $(495), final: true },
     fuel: { mpg: 15, pricePerGallon: $(3.4), final: true },
+    perDiem: 0,
     merchPerShowDefault: $(200),
     lodgingPerNightDefault: $(170),
     milesHome: 180,

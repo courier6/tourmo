@@ -16,6 +16,8 @@ export interface CarryOver {
   merchPerShow?: Money;
   lodgingPerNight?: Money;
   lodgingRooms?: number;
+  people?: number;
+  perDiem?: Money;
 }
 
 /**
@@ -42,6 +44,8 @@ export function carryOver(tours: Tour[]): CarryOver | undefined {
     merchPerShow: merch || undefined,
     lodgingPerNight: own('lodgingPerNight', latest.lodgingPerNightDefault),
     lodgingRooms: latest.lodgingRooms,
+    people: latest.people,
+    perDiem: own('perDiem', latest.perDiem),
   };
 }
 
@@ -58,6 +62,8 @@ export function blankTour(id: string, name: string, homeCity = '', homePlace?: P
     merchPerShowDefault: carried?.merchPerShow,
     lodgingPerNightDefault: carried?.lodgingPerNight,
     lodgingRooms: carried?.lodgingRooms,
+    people: carried?.people,
+    perDiem: carried?.perDiem,
     ratesFrom: carried?.from,
     dates: [],
     lines: [],
@@ -131,6 +137,7 @@ function isTourDate(v: unknown): v is TourDate {
     isPlanActual(v.lodging) &&
     Array.isArray(v.fuelFillUps) &&
     v.fuelFillUps.every(isMoney) &&
+    isOptionalMoney(v.food) &&
     Array.isArray(v.lines) &&
     v.lines.every(isLine) &&
     typeof v.settled === 'boolean'
@@ -160,6 +167,8 @@ export function isTour(v: unknown): v is Tour {
     isObject(v.fuel) &&
     isOptionalMoney(v.fuel.mpg) &&
     isOptionalMoney(v.fuel.pricePerGallon) &&
+    isOptionalMoney(v.people) &&
+    isOptionalMoney(v.perDiem) &&
     isOptionalMoney(v.merchPerShowDefault) &&
     isOptionalMoney(v.lodgingPerNightDefault) &&
     isOptionalMoney(v.lodgingRooms) &&
