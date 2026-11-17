@@ -26,6 +26,13 @@ export interface KeptDrive {
   exact?: boolean;
 }
 
+/** Money a member or a label put in to get the tour on the road, and is owed back. */
+export interface PutIn {
+  id: string;
+  who: string;
+  amount: Money;
+}
+
 /** The outside figures a tour can hold as estimates rather than as the band's own. */
 export type EstimatedRate = 'vanDailyRate' | 'mpg' | 'gasPrice' | 'lodgingPerNight' | 'perDiem' | 'merchCost';
 
@@ -47,6 +54,8 @@ export interface Tour {
   lodgingRooms?: number; // added: rooms a night, behind the lodging estimate. Empty = one for every two people
   estimated?: EstimatedRate[]; // added: rates that hold an estimate kept from setup
   ratesFrom?: string; // added: the earlier tour a new tour's rates were started from
+  putIn?: PutIn[]; // added: money to pay back before anything is shared out
+  splitBetween?: number; // added: how many people share what the tour makes. Empty = everyone on the road
   dates: TourDate[]; // ordered by date
   lines: ExtraLine[]; // tour-wide extras, e.g. merch cost reimbursement
   milesHome?: number; // added: the leg from the last date back to homeCity. Empty = estimated

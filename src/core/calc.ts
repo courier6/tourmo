@@ -5,7 +5,7 @@
 import { addDays, cityName, daysBetween } from './dates';
 import { floorToDollar, formatMoney, formatNumber, formatPercent, percentOf, roundToDollar } from './money';
 import { guaranteedMinimum, payout } from './payout';
-import { tourDays, tourRates } from './rates';
+import { peopleOn, tourDays, tourRates } from './rates';
 import { legInto, routeMiles, unknownLegs } from './route';
 import type { Commission, ExtraLine, Money, Tour, TourDate } from './types';
 
@@ -530,6 +530,52 @@ export function safeToSpend(tour: Tour, today: string): SafeToSpend | undefined 
   const net = budget(tour).now.net;
   if (net <= 0) return undefined;
   return { perDay: floorToDollar(net / daysLeft), daysLeft };
+}
+
+// ---------- the split ----------
+
+export interface Split {
+  /** The tour's net on the figures so far. */
+  net: Money;
+  /** Everything that was put in and is owed back. */
+  putIn: Money;
+  /** How much of it the tour can pay back: all of it, unless the tour lost money. */
+  paidBack: Money;
+  /** What there is to share out: the net, or nothing when the tour lost money. */
+  toShare: Money;
+  /** How many people share it. */
+  ways: number;
+  /** One share, in whole dollars. */
+  each: Money;
+  /** The odd dollars an even split leaves over. */
+  left: Money;
+  /** Shows not settled yet, whose payouts can still move the figures. */
+  open: number;
+}
+
+/**
+ * Who gets what when the tour is over. Money put in was spent on costs the
+ * budget already counts, so paying it back does not come out of the net: the
+ * net is what is shared. When the tour loses money the loss comes out of what
+ * was put in, and there is nothing to share.
+ */
+export function splitFor(tour: Tour): Split {
+  const b = budget(tour);
+  const net = b.now.net;
+  const putIn = sum((tour.putIn ?? []).map((p) => p.amount));
+  const ways = Math.max(1, Math.round(tour.splitBetween ?? peopleOn(tour)));
+  const toShare = Math.max(0, net);
+  const each = floorToDollar(toShare / ways);
+  return {
+    net,
+    putIn,
+    paidBack: Math.max(0, putIn + Math.min(0, net)),
+    toShare,
+    ways,
+    each,
+    left: toShare - each * ways,
+    open: b.showCount - b.settledCount,
+  };
 }
 
 // ---------- small helpers the screens share ----------

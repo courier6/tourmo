@@ -26,6 +26,7 @@ import {
   settledWithoutPayout,
   SHORTHAND_EXAMPLES,
   showActual,
+  splitFor,
   toOffer,
 } from './index';
 
@@ -437,5 +438,34 @@ describe('tour-wide income', () => {
     const tour = seedTour();
     tour.dates.forEach((d) => (d.lines = []));
     expect(budget(tour).revenue.map((l) => l.id)).toEqual(['shows', 'merch']);
+  });
+});
+
+describe('the split', () => {
+  it('shares the net evenly between everyone on the road, in whole dollars', () => {
+    const tour = seedTour(); // tracking to $3,454, with two of five shows not settled
+    expect(splitFor(tour)).toEqual({ net: $(3454), putIn: 0, paidBack: 0, toShare: $(3454), ways: 4, each: $(863), left: $(2), open: 2 });
+    tour.people = 6;
+    expect(splitFor(tour)).toMatchObject({ ways: 6, each: $(575), left: $(4) });
+    tour.splitBetween = 3; // two of the six are paid a fee
+    expect(splitFor(tour)).toMatchObject({ ways: 3, each: $(1151), left: $(1) });
+  });
+
+  it('pays back what was put in without taking it out of the net', () => {
+    const tour = seedTour();
+    tour.putIn = [
+      { id: 'a', who: 'Sam', amount: $(500) },
+      { id: 'b', who: 'The label', amount: $(1000) },
+    ];
+    expect(splitFor(tour)).toMatchObject({ putIn: $(1500), paidBack: $(1500), toShare: $(3454), each: $(863) });
+  });
+
+  it('takes a loss out of what was put in, and shares nothing', () => {
+    const tour = seedTour();
+    tour.lines.push({ id: 'repair', label: 'Engine repair', direction: 'out', plan: 0, actual: $(4000) });
+    tour.putIn = [{ id: 'a', who: 'Sam', amount: $(1000) }];
+    expect(splitFor(tour)).toMatchObject({ net: $(-546), paidBack: $(454), toShare: 0, each: 0, left: 0 });
+    tour.putIn = [{ id: 'a', who: 'Sam', amount: $(300) }];
+    expect(splitFor(tour).paidBack).toBe(0);
   });
 });

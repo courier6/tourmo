@@ -426,6 +426,7 @@ describe('starting from the last tour', () => {
     last.people = 5;
     last.perDiem = $(25);
     last.merchCostRate = 0.3;
+    last.splitBetween = 4;
     last.dates[1].merch.actual = $(260);
     last.dates[2].merch.actual = $(331);
     keepEstimates(last, data); // gas, mileage and lodging were estimates
@@ -449,6 +450,7 @@ describe('starting from the last tour', () => {
       people: 5,
       perDiem: $(25),
       merchCostRate: 0.3,
+      splitBetween: 4,
     });
 
     const next = blankTour('t9', 'Summer run', 'Dallas, TX', undefined, carried);

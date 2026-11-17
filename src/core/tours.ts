@@ -19,6 +19,7 @@ export interface CarryOver {
   people?: number;
   perDiem?: Money;
   merchCostRate?: number;
+  splitBetween?: number;
 }
 
 /**
@@ -48,6 +49,7 @@ export function carryOver(tours: Tour[]): CarryOver | undefined {
     people: latest.people,
     perDiem: own('perDiem', latest.perDiem),
     merchCostRate: own('merchCost', latest.merchCostRate),
+    splitBetween: latest.splitBetween,
   };
 }
 
@@ -67,6 +69,7 @@ export function blankTour(id: string, name: string, homeCity = '', homePlace?: P
     people: carried?.people,
     perDiem: carried?.perDiem,
     merchCostRate: carried?.merchCostRate,
+    splitBetween: carried?.splitBetween,
     ratesFrom: carried?.from,
     dates: [],
     lines: [],
@@ -122,6 +125,7 @@ const isOffer = (v: unknown) =>
   isOptionalMoney(v.threshold) &&
   isOneOf(v.basis, 'gross', 'net');
 const isPlace = (v: unknown) => isObject(v) && isMoney(v.lat) && isMoney(v.lon);
+const isPutIn = (v: unknown) => isObject(v) && typeof v.id === 'string' && typeof v.who === 'string' && isMoney(v.amount);
 const isDrives = (v: unknown) => isObject(v) && Object.values(v).every((d) => isObject(d) && isMoney(d.miles));
 
 function isTourDate(v: unknown): v is TourDate {
@@ -178,6 +182,8 @@ export function isTour(v: unknown): v is Tour {
     isOptionalMoney(v.lodgingRooms) &&
     isOptionalMoney(v.milesHome) &&
     (v.drives === undefined || isDrives(v.drives)) &&
+    (v.putIn === undefined || (Array.isArray(v.putIn) && v.putIn.every(isPutIn))) &&
+    isOptionalMoney(v.splitBetween) &&
     (v.setup === undefined || isOneOf(v.setup, 'dates', 'rates')) &&
     Array.isArray(v.lines) &&
     v.lines.every(isLine) &&
