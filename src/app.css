@@ -55,6 +55,18 @@ select {
   padding: 20px var(--gutter) 32px;
 }
 
+/* Shown on every screen while saves are being refused. It stays in view. */
+.unsaved {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 10px var(--gutter);
+  background: var(--bad);
+  color: var(--surface);
+  font-size: var(--size-note);
+  font-weight: 600;
+}
+
 .money {
   font-family: var(--font-money);
   font-weight: 500;

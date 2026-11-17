@@ -120,11 +120,17 @@ function load(): Loaded {
   return { data: withDrives(result?.data ?? fresh()), setAside: true };
 }
 
-function save(data: Stored) {
+/**
+ * Writes the tours to the device. False when the browser refused, because its
+ * storage is full or switched off (as some private windows do): the app still
+ * works for the visit, and the screen says that nothing is being kept.
+ */
+function save(data: Stored): boolean {
   try {
     localStorage.setItem(KEY, JSON.stringify(data));
+    return true;
   } catch {
-    // Private windows can refuse writes; the app still works for the session.
+    return false;
   }
 }
 
@@ -135,7 +141,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [loaded] = useState(load);
   const [data, setData] = useState<Stored>(loaded.data);
 
-  useEffect(() => save(data), [data]);
+  const [unsaved, setUnsaved] = useState(false);
+  useEffect(() => setUnsaved(!save(data)), [data]);
 
   // Figures looked up after the page opened (gas, lodging, road miles) change
   // what the screens work out, so each one redraws them.
@@ -189,6 +196,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
     () => ({
       tours: data.tours,
       setAside: loaded.setAside,
+      unsaved,
       figures: figuresFrom(),
       tour: data.tours.find((t) => t.id === data.activeTourId),
       openTour,
@@ -198,7 +206,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
       restoreSamples,
     }),
     // `lookups` is listed so that a new figure reaches every screen.
-    [data, loaded, lookups, openTour, createTour, deleteTour, update, restoreSamples],
+    [data, loaded, unsaved, lookups, openTour, createTour, deleteTour, update, restoreSamples],
   );
 
   // Real road miles for every drive of the open tour that is still an estimate.
