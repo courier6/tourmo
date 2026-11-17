@@ -66,9 +66,13 @@ export function DateForm({ dateId }: { dateId?: string }) {
   const [place, setPlace] = useState<Place | undefined>(existing?.place);
   const [kind, setKind] = useState<DateKind>(existing?.kind ?? 'show');
   const [miles, setMiles] = useState<number | undefined>(existing?.milesFromPrevious);
-  // Left empty on a new date, merch and lodging take the grey figure shown.
-  const [merch, setMerch] = useState<Money | undefined>(existing?.merch.plan);
-  const [lodging, setLodging] = useState<Money | undefined>(existing?.lodging.plan);
+  const merchFigure = tourRates(tour).merchPerShow.value;
+  // Left empty, merch and lodging take the grey figure shown. On a date being
+  // edited, a plan that is still the figure worked out for it was never typed
+  // over, so it starts empty too and goes on following the city and the kind
+  // of day when those are changed here. A figure the band typed stays.
+  const [merch, setMerch] = useState<Money | undefined>(() => (existing && existing.merch.plan !== (existing.kind === 'show' ? merchFigure : 0) ? existing.merch.plan : undefined));
+  const [lodging, setLodging] = useState<Money | undefined>(() => (existing && existing.lodging.plan !== lodgingFor(tour, existing) ? existing.lodging.plan : undefined));
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   if (dateId && !existing) {
@@ -81,7 +85,6 @@ export function DateForm({ dateId }: { dateId?: string }) {
   }
 
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(date) && city.trim() !== '';
-  const merchFigure = tourRates(tour).merchPerShow.value;
   const lodgingFigure = lodgingFor(tour, { city, place, date });
   const ownLodging = tour.lodgingPerNightDefault !== undefined && !tour.estimated?.includes('lodgingPerNight');
 
@@ -135,6 +138,13 @@ export function DateForm({ dateId }: { dateId?: string }) {
             ['off', 'Off day'],
             ['travel', 'Travel day'],
           ]}
+          note={
+            existing?.offer && kind !== 'show' ? (
+              <span className="bad" role="alert">
+                Saving this as {kind === 'off' ? 'an off day' : 'a travel day'} removes its offer{existing.offer.raw ? `, "${existing.offer.raw}"` : ''}. It cannot be brought back.
+              </span>
+            ) : undefined
+          }
         />
         <MilesField label="Miles from the previous stop" value={miles} onChange={setMiles} leg={legInto(tour, { id: existing?.id, date, city, place, milesFromPrevious: miles })} />
         {kind === 'show' && <MoneyField label="Planned merch" value={merch} onChange={setMerch} placeholder={String(merchFigure / 100)} note={merch === undefined ? 'Left empty, it uses the merch per show from Rates.' : undefined} />}

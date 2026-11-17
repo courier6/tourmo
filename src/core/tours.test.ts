@@ -114,4 +114,32 @@ describe('saved data', () => {
     expect(isTour(badDate)).toBe(false);
     for (const junk of [null, undefined, 'tour', 7, [], {}]) expect(isTour(junk)).toBe(false);
   });
+
+  it('refuses parts that are present but in the wrong shape', () => {
+    const [tour] = seedTours();
+    const changed = (edit: (copy: any) => void) => {
+      const copy = JSON.parse(JSON.stringify(tour));
+      edit(copy);
+      return copy;
+    };
+    const wrong: [string, (t: any) => void][] = [
+      ['a day that is not written YYYY-MM-DD', (t) => (t.dates[0].date = '2027-3-4')],
+      ['a day that does not exist', (t) => (t.dates[0].date = '2027-13-40')],
+      ['a line that is not a line', (t) => t.lines.push(null)],
+      ['a line on a date with no plan', (t) => t.dates[0].lines.push({ id: 'x', label: 'Buyout', direction: 'in' })],
+      ['a commission rate stored as text', (t) => (t.commissions[0].rate = '10')],
+      ['a commission on something unknown', (t) => (t.commissions[0].base = 'everything')],
+      ['an offer with no guarantee', (t) => delete t.dates[0].offer.guarantee],
+      ['an offer of an unknown type', (t) => (t.dates[0].offer.type = 'door')],
+      ['a box office figure stored as text', (t) => (t.dates[0].boxOffice = '2650')],
+      ['miles stored as text', (t) => (t.dates[0].milesFromPrevious = '205')],
+      ['a place with no longitude', (t) => (t.dates[0].place = { lat: 32.8 })],
+      ['an unknown kind of day', (t) => (t.dates[0].kind = 'load-in')],
+      ['an unknown setup step', (t) => (t.setup = 'offers')],
+      ['held drives that are not drives', (t) => (t.drives = { 'dallas, tx>tulsa, ok': 256 })],
+    ];
+    for (const [what, edit] of wrong) expect(isTour(changed(edit)), what).toBe(false);
+    // Each of these would otherwise throw or work out to nonsense on the tour list.
+    expect(() => tourPhase(changed((t) => (t.dates[0].date = '2027-3-4')), '2027-03-06')).toThrow();
+  });
 });

@@ -9,6 +9,8 @@ export interface Store {
   tours: Tour[];
   /** True when saved data could not be read at start-up and a copy was kept. */
   setAside: boolean;
+  /** True when the last save was refused by the browser, so changes are not being kept. */
+  unsaved: boolean;
   /** Where the gas and lodging figures in use came from: looked up now, kept from an earlier visit, or saved with the app. */
   figures: 'live' | 'kept' | 'saved';
   /** The open tour, if there is one. */

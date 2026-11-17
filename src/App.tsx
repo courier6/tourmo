@@ -56,10 +56,15 @@ const TABS: [Tab, string, string][] = [
 ];
 
 export function App() {
-  const { tour } = useTours();
+  const { tour, unsaved } = useTours();
   const { tab, el } = screenFor(useRoute(), tour);
   return (
     <div className="app">
+      {unsaved && (
+        <p className="unsaved" role="alert">
+          Not saving. This browser refused to store your changes: its storage is full or switched off. Anything entered now is lost when this page closes.
+        </p>
+      )}
       {el}
       {tab && (
         <nav className="bar" aria-label="Sections">

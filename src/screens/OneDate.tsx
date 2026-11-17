@@ -14,6 +14,7 @@ import {
   netDiff,
   newId,
   revenueDiff,
+  settledWithoutPayout,
   showActual,
   showPlan,
   type Diff,
@@ -293,6 +294,13 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
       </div>
 
       <Check label="This date is settled" checked={date.settled} onChange={(v) => edit((d) => (d.settled = v))} />
+      {settledWithoutPayout(date) && (
+        <p className="note bad" role="alert">
+          {offer
+            ? `Settled, but the payout is not in. Until the box office or the amount paid is entered above, this show counts at its plan of ${formatMoney(showPlan(date))}.`
+            : 'Settled, but this date has no offer and no amount paid, so it counts as $0. Enter the amount paid above.'}
+        </p>
+      )}
 
       <a className="btn" href={href('/budget/actuals')} style={{ marginTop: 12 }}>
         Done

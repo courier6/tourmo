@@ -3,7 +3,7 @@
 // from where the two cities are, when both were picked from the city list.
 
 import { sameCity } from './dates';
-import type { Place, Tour, TourDate } from './types';
+import type { KeptDrive, Place, Tour, TourDate } from './types';
 
 /**
  * Roads are longer than the straight line between two cities. Between cities
@@ -95,7 +95,10 @@ interface Stop {
   place?: Place;
 }
 
-function leg(from: Stop, to: Stop, typed: number | undefined): Leg {
+/** A drive is kept under its two city names, so a changed city makes it a new drive. */
+const driveKey = (from: string, to: string) => `${from.trim().toLowerCase()}>${to.trim().toLowerCase()}`;
+
+function leg(from: Stop, to: Stop, typed: number | undefined, kept?: Record<string, KeptDrive>): Leg {
   const same = sameCity(from.city, to.city);
   const places: [Place, Place] | undefined = !same && from.place && to.place ? [from.place, to.place] : undefined;
   const road = places && knownRoad(...places);
@@ -103,6 +106,9 @@ function leg(from: Stop, to: Stop, typed: number | undefined): Leg {
   const common = { from: from.city, to: to.city, estimate, exact: road !== undefined, minutes: road?.minutes, ends: places };
   if (typed !== undefined) return { ...common, miles: typed, source: 'typed' };
   if (same) return { ...common, miles: 0, source: 'none' };
+  // Once setup has ended the plan holds its own miles for the drive.
+  const held = kept?.[driveKey(from.city, to.city)];
+  if (held && Number.isFinite(held.miles)) return { ...common, miles: held.miles, source: held.exact ? 'road' : 'estimated' };
   if (estimate !== undefined) return { ...common, miles: estimate, source: road ? 'road' : 'estimated' };
   return { ...common, miles: 0, source: 'unknown' };
 }
@@ -116,18 +122,43 @@ const home = (tour: Tour): Stop => ({ city: tour.homeCity, place: tour.homePlace
 export function legInto(tour: Tour, date: Pick<TourDate, 'date' | 'city' | 'place' | 'milesFromPrevious'> & { id?: string }): Leg {
   const index = date.id === undefined ? -1 : tour.dates.findIndex((d) => d.id === date.id);
   const previous = index >= 0 ? tour.dates[index - 1] : tour.dates.filter((d) => d.date <= date.date).at(-1);
-  return leg(previous ?? home(tour), date, date.milesFromPrevious);
+  return leg(previous ?? home(tour), date, date.milesFromPrevious, tour.drives);
 }
 
 /** The drive home from the last date. */
 export function legHome(tour: Tour): Leg {
   const last = tour.dates.at(-1);
   if (!last) return { miles: tour.milesHome ?? 0, source: tour.milesHome === undefined ? 'none' : 'typed', from: tour.homeCity, to: tour.homeCity };
-  return leg(last, home(tour), tour.milesHome);
+  return leg(last, home(tour), tour.milesHome, tour.drives);
 }
 
 /** Every drive of the tour, in order, ending with the drive home. */
 export const legs = (tour: Tour): Leg[] => [...tour.dates.map((d) => legInto(tour, d)), legHome(tour)];
+
+/**
+ * Writes the miles of every untyped drive into the tour, so the fuel plan
+ * stays where it is when a road lookup arrives later, or when the device's
+ * kept lookups are gone. A drive already held keeps its figure; a drive that
+ * is new (a date added, a city changed) takes the best figure known now.
+ * With `sharpen`, a held straight-line estimate gives way to road miles that
+ * have since been looked up: for a tour that is not over yet. Typed miles
+ * are the band's own and are not kept here. Changes the tour passed in and
+ * says whether anything changed.
+ */
+export function keepDrives(tour: Tour, sharpen = false): boolean {
+  const before = JSON.stringify(tour.drives ?? null);
+  const kept: Record<string, KeptDrive> = {};
+  for (const l of legs(tour)) {
+    if (l.source !== 'road' && l.source !== 'estimated') continue;
+    const key = driveKey(l.from, l.to);
+    const held = tour.drives?.[key];
+    const road = l.exact && l.estimate !== undefined ? l.estimate : undefined;
+    if (road !== undefined && (!held || (sharpen && !held.exact))) kept[key] = { miles: road, exact: true };
+    else kept[key] = held ?? { miles: l.miles };
+  }
+  tour.drives = kept;
+  return JSON.stringify(kept) !== before;
+}
 
 export function routeMiles(tour: Tour): number {
   return legs(tour).reduce((total, l) => total + l.miles, 0);

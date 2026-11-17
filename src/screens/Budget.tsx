@@ -18,6 +18,7 @@ import {
   SAMPLE_TOUR_IDS,
   showActual,
   showDates,
+  settledWithoutPayout,
   showPlan,
   STATUS_LABEL,
   type Budget as BudgetData,
@@ -234,6 +235,8 @@ function DateRow({ tour, date, today }: { tour: Tour; date: TourDate; today: str
     if (date.merch.actual !== undefined) parts.push(`Merch ${formatMoney(date.merch.actual)}`);
     figures = parts.join(' · ');
   } else figures = date.offer ? `Guarantee ${formatMoney(showPlan(date))}` : 'No offer yet';
+  // Ticked settled with no payout in: it still counts at its plan, so the row says what is missing.
+  const unpaid = settledWithoutPayout(date);
 
   return (
     <li>
@@ -245,7 +248,7 @@ function DateRow({ tour, date, today }: { tour: Tour; date: TourDate; today: str
           <span className="note">{figures}</span>
         </span>
         <span className="end">
-          <span className={`status ${status}`}>{STATUS_LABEL[status]}</span>
+          <span className={`status ${unpaid ? 'bad' : status}`}>{unpaid ? 'Payout not entered' : STATUS_LABEL[status]}</span>
           {result.hasActuals && <DiffText diff={netDiff(0, result.vsPlan)} className="note" />}
         </span>
       </a>
@@ -256,6 +259,7 @@ function DateRow({ tour, date, today }: { tour: Tour; date: TourDate; today: str
 function Actuals({ b, tour, today }: { b: BudgetData; tour: Tour; today: string }) {
   const diff = netDiff(b.plan.net, b.now.net);
   const safe = safeToSpend(tour, today);
+  const unpaid = tour.dates.filter(settledWithoutPayout).length;
   return (
     <>
       <div className="headline">
@@ -264,6 +268,7 @@ function Actuals({ b, tour, today }: { b: BudgetData; tour: Tour; today: string 
         <p className={`verdict ${diff.tone === 'flat' ? '' : diff.tone}`}>{diff.tone === 'flat' ? 'On plan' : `${diff.text} of plan`}</p>
         <p className="label" style={{ marginTop: 2 }}>
           {b.settledCount} of {b.showCount} shows settled
+          {unpaid > 0 && `, ${unpaid} with no payout entered and counted at plan`}
         </p>
         {safe ? (
           <p className="sub">

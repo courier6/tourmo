@@ -23,6 +23,7 @@ import {
   routeMiles,
   safeToSpend,
   seedTour,
+  settledWithoutPayout,
   SHORTHAND_EXAMPLES,
   showActual,
   toOffer,
@@ -56,6 +57,19 @@ describe('offer parser', () => {
     expect(parseOffer('$1K vs 70%')).toMatchObject({ basis: 'gross', basisAssumed: true });
     expect(parseOffer('$1K vs 70% of net')).toMatchObject({ basis: 'net', basisAssumed: false });
     expect(parseOffer('70% of gross')).toMatchObject({ basis: 'gross', basisAssumed: false });
+  });
+
+  it('reads the other ways net and gross are written', () => {
+    const net = { ok: true, basis: 'net', basisAssumed: false };
+    expect(parseOffer('$1,000 vs. 70% of NBOR')).toMatchObject({ ...net, type: 'versus', guarantee: $(1000), percentage: 0.7 });
+    expect(parseOffer('$500 vs 85% of NBOR, whichever is greater')).toMatchObject({ ...net, type: 'versus', percentage: 0.85 });
+    expect(parseOffer('85/15 after expenses')).toMatchObject({ ...net, type: 'percentage', percentage: 0.85 });
+    expect(parseOffer('70% after costs')).toMatchObject({ ...net, type: 'percentage', percentage: 0.7 });
+    expect(parseOffer('80% of door after the house nut')).toMatchObject({ ...net, type: 'percentage', percentage: 0.8 });
+    expect(parseOffer('$1K vs 80% of GBOR')).toMatchObject({ ok: true, basis: 'gross', basisAssumed: false });
+    // A figure after "after" is a threshold, not a word for net.
+    expect(parseOffer('1k plus 70% after 2,250')).toMatchObject({ ok: true, type: 'plus', threshold: $(2250), basis: 'gross', basisAssumed: true });
+    expect(parseOffer('70% after $300')).toMatchObject({ type: 'plus', threshold: $(300), basis: 'gross' });
   });
 
   it('reads other spellings', () => {
@@ -265,6 +279,21 @@ describe('tracking rules', () => {
     const tour = seedTour();
     tour.dates[3].merch.actual = 0;
     expect(budget(tour).revenue[1].now).toBe($(1615 - 300));
+  });
+
+  it('a show settled with no payout entered is told apart from one that was paid', () => {
+    const tour = seedTour();
+    const show = { ...tour.dates[3], settled: true, boxOffice: undefined, showActualOverride: undefined };
+    // A deal with a percentage needs the box office before the payout is known.
+    expect(settledWithoutPayout({ ...show, offer: offer('$1K vs 70%') })).toBe(true);
+    expect(settledWithoutPayout({ ...show, offer: offer('80% of door') })).toBe(true);
+    expect(settledWithoutPayout({ ...show, offer: undefined })).toBe(true);
+    expect(settledWithoutPayout({ ...show, offer: offer('$1K vs 70%'), boxOffice: $(1000) })).toBe(false);
+    expect(settledWithoutPayout({ ...show, offer: offer('80% of door'), showActualOverride: $(400) })).toBe(false);
+    // A flat deal paid its guarantee, and a show not yet settled is not missing anything.
+    expect(settledWithoutPayout({ ...show, offer: offer('$800 flat') })).toBe(false);
+    expect(settledWithoutPayout({ ...show, offer: offer('$1K vs 70%'), settled: false })).toBe(false);
+    expect(settledWithoutPayout({ ...show, kind: 'off' })).toBe(false);
   });
 
   it('tour-wide lines hold the larger of plan and actual until final', () => {
