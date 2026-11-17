@@ -2,9 +2,10 @@
 // versions in the same ledger style so a tour can be built end to end.
 
 import { useState } from 'react';
-import { dateStatus, describeLeg, formatDay, formatMoney, formatNumber, legHome, legInto, lodgingFor, newId, routeMiles, STATUS_LABEL, tourRates, type DateKind, type Money, type Place, type TourDate } from '../core';
+import { dateStatus, describeLeg, formatDay, formatNumber, legHome, legInto, lodgingFor, newId, routeMiles, STATUS_LABEL, tourRates, type DateKind, type Money, type Place, type TourDate } from '../core';
 import { Back, Check, MoneyField, SelectField, TextField } from '../components';
 import { CityField, MilesField } from '../CityField';
+import { useMoney } from '../currency';
 import { go, href } from '../router';
 import { useTour } from '../store';
 
@@ -58,6 +59,7 @@ export function Dates() {
 
 export function DateForm({ dateId }: { dateId?: string }) {
   const { tour, update } = useTour();
+  const money = useMoney();
   const existing = dateId ? tour.dates.find((d) => d.id === dateId) : undefined;
   const last = tour.dates.at(-1);
 
@@ -170,7 +172,7 @@ export function DateForm({ dateId }: { dateId?: string }) {
                     ? 'A night at home, so nothing is planned. Type a figure if there is a cost.'
                     : ownLodging
                       ? 'Left empty, it uses your lodging per night from Rates.'
-                      : `Left empty, it uses ${formatMoney(lodgingFigure)}: ${tourRates(tour).rooms} ${tourRates(tour).rooms === 1 ? 'room' : 'rooms'} at the federal lodging rate for ${city.trim()} that month.`
+                      : `Left empty, it uses ${money(lodgingFigure)}: ${tourRates(tour).rooms} ${tourRates(tour).rooms === 1 ? 'room' : 'rooms'} at the federal lodging rate for ${city.trim()} that month.`
             }
           />
         )}

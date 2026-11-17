@@ -1,7 +1,10 @@
 // Data model from the handoff doc. A few fields were added for the prototype
 // and are marked "added" below; everything else follows the doc.
 
-export type Money = number; // US dollars, stored as whole cents
+export type Money = number; // the tour's currency, stored as whole cents
+
+/** The currencies a tour can be kept in. One per tour; nothing is converted. */
+export type Currency = 'USD' | 'EUR' | 'GBP';
 
 export interface PlanActual {
   plan: Money;
@@ -41,6 +44,7 @@ export interface Tour {
   name: string;
   homeCity: string; // the route starts and ends here
   homePlace?: Place; // added
+  currency?: Currency; // added: what every amount on the tour is in. Empty = US dollars
   commissions: Commission[];
   // Any rate left empty is estimated or worked out; see rates.ts. 0 is a real figure.
   vehicle: { dailyRate?: Money; days?: number; actual?: Money; final?: boolean };

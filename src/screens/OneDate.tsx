@@ -8,7 +8,6 @@ import {
   foodPlan,
   foodSpent,
   formatDay,
-  formatMoney,
   formatNumber,
   fuelForDrive,
   fuelOnDate,
@@ -27,6 +26,7 @@ import {
   type TourDate,
 } from '../core';
 import { Amount, Back, Check, MoneyField, MoneyInput, TextField } from '../components';
+import { useCurrency, useMoney } from '../currency';
 import { href } from '../router';
 import { useTour } from '../store';
 
@@ -89,6 +89,8 @@ function AddDateExpense({ onAdd }: { onAdd: (label: string, amount: Money) => vo
 
 function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
   const { update } = useTour();
+  const currency = useCurrency();
+  const money = useMoney();
   // Each entry is saved as it is typed, like Rates. Nothing waits for a Save
   // button, so leaving the screen by any route keeps what was entered.
   const edit = (change: (d: TourDate) => void) =>
@@ -108,7 +110,7 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
   const drive = fuelForDrive(tour, date);
   const foodLeft = foodPlan(tour) - foodSpent(tour);
   const { perDiem, people } = tourRates(tour);
-  const summary = netDiff(0, result.vsPlan);
+  const summary = netDiff(0, result.vsPlan, currency);
   const extrasIn = date.lines.filter((l) => l.direction === 'in');
   const extrasOut = date.lines.filter((l) => l.direction === 'out');
   const setLineActual = (id: string, actual: Money | undefined) =>
@@ -150,10 +152,10 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
                     : date.showActualOverride !== undefined
                       ? 'Entered by hand, in place of the calculated payout.'
                       : date.boxOffice !== undefined || offer.type === 'flat'
-                        ? explainPayout(offer, date.boxOffice ?? 0)
+                        ? explainPayout(offer, date.boxOffice ?? 0, currency)
                         : 'Enter the box office to work this out.'}
                 </span>
-                {paid !== undefined && <VsPlan diff={revenueDiff(showPlan(date), paid)} />}
+                {paid !== undefined && <VsPlan diff={revenueDiff(showPlan(date), paid, currency)} />}
               </div>
               <div className="plan">
                 <Amount value={showPlan(date)} />
@@ -180,7 +182,7 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
             <div className="pa-row">
               <div className="name">
                 <label htmlFor="merch">Merch</label>
-                {date.merch.actual !== undefined && <VsPlan diff={revenueDiff(date.merch.plan, date.merch.actual)} />}
+                {date.merch.actual !== undefined && <VsPlan diff={revenueDiff(date.merch.plan, date.merch.actual, currency)} />}
               </div>
               <div className="plan">
                 <Amount value={date.merch.plan} />
@@ -193,7 +195,7 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
             <div className="pa-row" key={l.id}>
               <div className="name">
                 <label htmlFor={'line-' + l.id}>{l.label}</label>
-                {l.actual !== undefined && <VsPlan diff={revenueDiff(l.plan, l.actual)} />}
+                {l.actual !== undefined && <VsPlan diff={revenueDiff(l.plan, l.actual, currency)} />}
               </div>
               <div className="plan">
                 <Amount value={l.plan} />
@@ -215,7 +217,7 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
           <div className="name">
             <label htmlFor="lodging">Lodging</label>
             {date.lodging.plan === 0 && date.lodging.actual === undefined && <span className="note">None planned tonight</span>}
-            {date.lodging.actual !== undefined && <VsPlan diff={expenseDiff(date.lodging.plan, date.lodging.actual)} />}
+            {date.lodging.actual !== undefined && <VsPlan diff={expenseDiff(date.lodging.plan, date.lodging.actual, currency)} />}
           </div>
           <div className="plan">
             <Amount value={date.lodging.plan} />
@@ -228,11 +230,11 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
             <label htmlFor="fuel">Fuel bought</label>
             {drive.miles > 0 && (
               <span className="note">
-                About {formatMoney(drive.cost)} for the {formatNumber(drive.miles)} mi drive in
+                About {money(drive.cost)} for the {formatNumber(drive.miles)} mi drive in
               </span>
             )}
             <span className="note">
-              {fuelLeft >= 0 ? `${formatMoney(fuelLeft)} left in the tour fuel budget` : `Tour fuel budget is ${formatMoney(-fuelLeft)} over`}
+              {fuelLeft >= 0 ? `${money(fuelLeft)} left in the tour fuel budget` : `Tour fuel budget is ${money(-fuelLeft)} over`}
             </span>
           </div>
           <div className="plan">
@@ -246,10 +248,10 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
             <label htmlFor="food">Food and per diems</label>
             {perDiem.value > 0 && (
               <span className="note">
-                About {formatMoney(perDiem.value * people)} a day for {people} {people === 1 ? 'person' : 'people'}
+                About {money(perDiem.value * people)} a day for {people} {people === 1 ? 'person' : 'people'}
               </span>
             )}
-            <span className="note">{foodLeft >= 0 ? `${formatMoney(foodLeft)} left in the tour food budget` : `Tour food budget is ${formatMoney(-foodLeft)} over`}</span>
+            <span className="note">{foodLeft >= 0 ? `${money(foodLeft)} left in the tour food budget` : `Tour food budget is ${money(-foodLeft)} over`}</span>
           </div>
           <div className="plan">
             <NoPlan />
@@ -262,7 +264,7 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
             <div className="name">
               <span className="label">{c.label}</span>
               <span className="note">Worked out from the payout</span>
-              {c.actual !== undefined && <VsPlan diff={expenseDiff(c.plan, c.actual)} />}
+              {c.actual !== undefined && <VsPlan diff={expenseDiff(c.plan, c.actual, currency)} />}
             </div>
             <div className="plan">
               <Amount value={c.plan} />
@@ -276,7 +278,7 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
             <div className="name">
               <span className="label">{merchCost.label}</span>
               <span className="note">Worked out from the merch sold</span>
-              {merchCost.actual !== undefined && <VsPlan diff={expenseDiff(merchCost.plan, merchCost.actual)} />}
+              {merchCost.actual !== undefined && <VsPlan diff={expenseDiff(merchCost.plan, merchCost.actual, currency)} />}
             </div>
             <div className="plan">
               <Amount value={merchCost.plan} />
@@ -289,7 +291,7 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
           <div className="pa-row" key={l.id}>
             <div className="name">
               <label htmlFor={'line-' + l.id}>{l.label}</label>
-              {l.actual !== undefined && <VsPlan diff={expenseDiff(l.plan, l.actual)} />}
+              {l.actual !== undefined && <VsPlan diff={expenseDiff(l.plan, l.actual, currency)} />}
               <button className="text-btn" type="button" style={{ display: 'block', padding: 0 }} onClick={() => edit((d) => (d.lines = d.lines.filter((x) => x.id !== l.id)))}>
                 Remove<span className="sr-only"> {l.label}</span>
               </button>
@@ -334,8 +336,8 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
       {settledWithoutPayout(date) && (
         <p className="note bad" role="alert">
           {offer
-            ? `Settled, but the payout is not in. Until the box office or the amount paid is entered above, this show counts at its plan of ${formatMoney(showPlan(date))}.`
-            : 'Settled, but this date has no offer and no amount paid, so it counts as $0. Enter the amount paid above.'}
+            ? `Settled, but the payout is not in. Until the box office or the amount paid is entered above, this show counts at its plan of ${money(showPlan(date))}.`
+            : `Settled, but this date has no offer and no amount paid, so it counts as ${money(0)}. Enter the amount paid above.`}
         </p>
       )}
 

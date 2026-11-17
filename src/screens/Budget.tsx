@@ -5,8 +5,8 @@ import {
   dateAgainstPlan,
   dateStatus,
   expenseDiff,
+  CURRENCIES,
   formatDay,
-  formatMoney,
   formatNumber,
   formatRange,
   lineDiff,
@@ -29,6 +29,7 @@ import {
   type TourDate,
 } from '../core';
 import { Amount, Back, DiffText, MoneyField, NumberField, TextField } from '../components';
+import { useCurrency, useMoney } from '../currency';
 import { href } from '../router';
 import { useTour } from '../store';
 
@@ -165,13 +166,14 @@ function AddLine({ direction }: { direction: 'in' | 'out' }) {
 }
 
 function Plan({ b }: { b: BudgetData }) {
+  const money = useMoney();
   const net = b.plan.net;
   return (
     <>
       <div className="headline">
         <p className="label">Projected net at guaranteed minimums</p>
-        <p className="figure">{formatMoney(net)}</p>
-        <p className={`verdict ${net >= 0 ? 'good' : 'bad'}`}>{net >= 0 ? 'In the black' : `Short by ${formatMoney(-net)}`}</p>
+        <p className="figure">{money(net)}</p>
+        <p className={`verdict ${net >= 0 ? 'good' : 'bad'}`}>{net >= 0 ? 'In the black' : `Short by ${money(-net)}`}</p>
         <p className="sub pair">
           <span>
             In <Amount value={b.plan.revenue} />
@@ -218,6 +220,7 @@ function Plan({ b }: { b: BudgetData }) {
 // ---------- Actuals ----------
 
 function LedgerRow({ line }: { line: BudgetLine }) {
+  const currency = useCurrency();
   const to = line.kind === 'extra' ? lineLink(line) : line.kind === 'vehicle' || line.kind === 'fuel' || line.kind === 'food' || line.kind === 'merchCost' ? '/rates' : undefined;
   return (
     <tr>
@@ -232,23 +235,25 @@ function LedgerRow({ line }: { line: BudgetLine }) {
         <Amount value={line.now} />
       </td>
       <td>
-        <DiffText diff={lineDiff(line)} className="vs" />
+        <DiffText diff={lineDiff(line, currency)} className="vs" />
       </td>
     </tr>
   );
 }
 
 function DateRow({ tour, date, today }: { tour: Tour; date: TourDate; today: string }) {
+  const currency = useCurrency();
+  const money = useMoney();
   const status = dateStatus(date, today);
   const result = dateAgainstPlan(tour, date);
   const paid = showActual(date);
   let figures: string;
   if (date.kind !== 'show') figures = date.kind === 'off' ? 'Off day' : 'Travel day';
   else if (result.hasActuals) {
-    const parts = [paid !== undefined ? `Show ${formatMoney(paid)}` : `Guarantee ${formatMoney(showPlan(date))}`];
-    if (date.merch.actual !== undefined) parts.push(`Merch ${formatMoney(date.merch.actual)}`);
+    const parts = [paid !== undefined ? `Show ${money(paid)}` : `Guarantee ${money(showPlan(date))}`];
+    if (date.merch.actual !== undefined) parts.push(`Merch ${money(date.merch.actual)}`);
     figures = parts.join(' · ');
-  } else figures = date.offer ? `Guarantee ${formatMoney(showPlan(date))}` : 'No offer yet';
+  } else figures = date.offer ? `Guarantee ${money(showPlan(date))}` : 'No offer yet';
   // Ticked settled with no payout in: it still counts at its plan, so the row says what is missing.
   const unpaid = settledWithoutPayout(date);
 
@@ -263,7 +268,7 @@ function DateRow({ tour, date, today }: { tour: Tour; date: TourDate; today: str
         </span>
         <span className="end">
           <span className={`status ${unpaid ? 'bad' : status}`}>{unpaid ? 'Payout not entered' : STATUS_LABEL[status]}</span>
-          {result.hasActuals && <DiffText diff={netDiff(0, result.vsPlan)} className="note" />}
+          {result.hasActuals && <DiffText diff={netDiff(0, result.vsPlan, currency)} className="note" />}
         </span>
       </a>
     </li>
@@ -271,14 +276,16 @@ function DateRow({ tour, date, today }: { tour: Tour; date: TourDate; today: str
 }
 
 function Actuals({ b, tour, today }: { b: BudgetData; tour: Tour; today: string }) {
-  const diff = netDiff(b.plan.net, b.now.net);
+  const currency = useCurrency();
+  const money = useMoney();
+  const diff = netDiff(b.plan.net, b.now.net, currency);
   const safe = safeToSpend(tour, today);
   const unpaid = tour.dates.filter(settledWithoutPayout).length;
   return (
     <>
       <div className="headline">
         <p className="label">Now tracking to</p>
-        <p className="figure">{formatMoney(b.now.net)}</p>
+        <p className="figure">{money(b.now.net)}</p>
         <p className={`verdict ${diff.tone === 'flat' ? '' : diff.tone}`}>{diff.tone === 'flat' ? 'On plan' : diff.tone === 'good' ? `${diff.text} of plan` : `${diff.text} plan`}</p>
         <p className="label" style={{ marginTop: 2 }}>
           {b.settledCount} of {b.showCount} shows settled
@@ -290,7 +297,7 @@ function Actuals({ b, tour, today }: { b: BudgetData; tour: Tour; today: string 
             still ends in the black.
           </p>
         ) : (
-          b.now.net <= 0 && <p className="sub">Nothing spare to spend: the tour is tracking {formatMoney(-b.now.net)} short.</p>
+          b.now.net <= 0 && <p className="sub">Nothing spare to spend: the tour is tracking {money(-b.now.net)} short.</p>
         )}
       </div>
 
@@ -317,7 +324,7 @@ function Actuals({ b, tour, today }: { b: BudgetData; tour: Tour; today: string 
               <Amount value={b.now.revenue} />
             </td>
             <td>
-              <DiffText diff={revenueDiff(b.plan.revenue, b.now.revenue)} className="vs" />
+              <DiffText diff={revenueDiff(b.plan.revenue, b.now.revenue, currency)} className="vs" />
             </td>
           </tr>
           <tr className="gap" aria-hidden="true">
@@ -335,7 +342,7 @@ function Actuals({ b, tour, today }: { b: BudgetData; tour: Tour; today: string 
               <Amount value={b.now.expenses} />
             </td>
             <td>
-              <DiffText diff={expenseDiff(b.plan.expenses, b.now.expenses)} className="vs" />
+              <DiffText diff={expenseDiff(b.plan.expenses, b.now.expenses, currency)} className="vs" />
             </td>
           </tr>
           <tr className="total">
@@ -419,6 +426,8 @@ function AddPutIn() {
 /** Who gets what at the end: money put in is paid back, and what the tour made is shared. */
 function Split({ b, tour }: { b: BudgetData; tour: Tour }) {
   const { update } = useTour();
+  const currency = useCurrency();
+  const money = useMoney();
   const s = splitFor(tour);
   const short = s.net < 0;
   const putIn = tour.putIn ?? [];
@@ -428,8 +437,8 @@ function Split({ b, tour }: { b: BudgetData; tour: Tour }) {
     <>
       <div className="headline">
         <p className="label">{short ? 'Nothing to share out, on the figures so far' : 'To share out, on the figures so far'}</p>
-        <p className="figure">{formatMoney(short ? s.net : s.toShare)}</p>
-        <p className={`verdict ${short ? 'bad' : 'good'}`}>{short ? `The tour is ${formatMoney(-s.net)} short` : s.ways === 1 ? 'All to one person' : `${formatMoney(s.each)} each, between ${people}`}</p>
+        <p className="figure">{money(short ? s.net : s.toShare)}</p>
+        <p className={`verdict ${short ? 'bad' : 'good'}`}>{short ? `The tour is ${money(-s.net)} short` : s.ways === 1 ? 'All to one person' : `${money(s.each)} each, between ${people}`}</p>
         <p className="sub">
           {b.showCount === 0
             ? 'No shows yet.'
@@ -509,7 +518,7 @@ function Split({ b, tour }: { b: BudgetData; tour: Tour }) {
               <span className="name">
                 <span className="label">Paid back</span>
                 <span className="note">
-                  Of the {formatMoney(s.putIn)} put in. The other {formatMoney(s.putIn - s.paidBack)} went on the shortfall.
+                  Of the {money(s.putIn)} put in. The other {money(s.putIn - s.paidBack)} went on the shortfall.
                 </span>
               </span>
               <span className="end">
@@ -530,7 +539,7 @@ function Split({ b, tour }: { b: BudgetData; tour: Tour }) {
             <li className="row">
               <span className="name">
                 <span className="label">Left over</span>
-                <span className="note">The odd dollars an even split leaves</span>
+                <span className="note">The odd {CURRENCIES[currency].name} an even split leaves</span>
               </span>
               <span className="end">
                 <Amount value={s.left} />

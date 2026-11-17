@@ -4,7 +4,6 @@ import {
   describeOffer,
   examplePayouts,
   formatDay,
-  formatMoney,
   guaranteedMinimum,
   parseOffer,
   SHORTHAND_EXAMPLES,
@@ -17,6 +16,7 @@ import {
   type ParsedOffer,
 } from '../core';
 import { Amount, Back, MoneyField, NumberField, SelectField } from '../components';
+import { useCurrency, useMoney } from '../currency';
 import { go, href } from '../router';
 import { useTour } from '../store';
 
@@ -85,6 +85,8 @@ const TYPES: [OfferType, string][] = [
 
 export function OfferEntry({ dateId }: { dateId: string }) {
   const { tour, update } = useTour();
+  const currency = useCurrency();
+  const money = useMoney();
   const date = tour.dates.find((d) => d.id === dateId);
   const shows = showDates(tour);
 
@@ -169,7 +171,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
             Read as
           </h2>
           <p className="reading" role="status">
-            {empty ? 'Type an offer above, or fill in the fields.' : reading.ok || fields.guarantee !== undefined ? describeOffer(offer) : 'Could not read that. Fill in the fields below; your text is kept as typed.'}
+            {empty ? 'Type an offer above, or fill in the fields.' : reading.ok || fields.guarantee !== undefined ? describeOffer(offer, currency) : 'Could not read that. Fill in the fields below; your text is kept as typed.'}
           </p>
           {!empty && reading.doubts.length > 0 && (
             <div className="note bad" role="alert" style={{ marginTop: 4 }}>
@@ -241,7 +243,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
             {examplePayouts(offer).map((row) => (
               <li className="row" key={row.basis} style={{ minHeight: 48 }}>
                 <span className="name">
-                  If the {offer.basis} is <span className="money">{formatMoney(row.basis)}</span>
+                  If the {offer.basis} is <span className="money">{money(row.basis)}</span>
                 </span>
                 <Amount value={row.payout} />
               </li>

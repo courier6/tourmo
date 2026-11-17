@@ -2,7 +2,7 @@
 // against today. Not in the mockups; a plain list in the same ledger style.
 
 import { useState } from 'react';
-import { budget, currentEstimates, formatMonth, formatRange, localToday, SAMPLE_TOUR_IDS, showDates, tourPhase, type Tour, type TourPhase } from '../core';
+import { budget, currencyOf, currentEstimates, formatMonth, formatRange, localToday, SAMPLE_TOUR_IDS, showDates, tourPhase, type Tour, type TourPhase } from '../core';
 import { Amount } from '../components';
 import { href } from '../router';
 import { backupOf, readSaved, todayFor, UNREADABLE_KEY, useTours } from '../store';
@@ -71,7 +71,7 @@ function TourRow({ tour, phase }: { tour: Tour; phase: TourPhase }) {
           </span>
         </span>
         <span className="end">
-          <Amount value={net} />
+          <Amount value={net} currency={currencyOf(tour)} />
           <span className="chev" aria-hidden="true">
             {'›'}
           </span>

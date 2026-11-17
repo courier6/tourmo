@@ -1,9 +1,12 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type Ref } from 'react';
-import { dollars, formatMoney, parseTyped, type Diff, type Money } from './core';
+import { CURRENCIES, dollars, formatMoney, parseTyped, type Currency, type Diff, type Money } from './core';
+import { useCurrency } from './currency';
 import { href } from './router';
 
-export function Amount({ value, className = '' }: { value: Money; className?: string }) {
-  return <span className={`money ${className}`}>{formatMoney(value)}</span>;
+/** An amount in the currency of the tour on screen, or in `currency` where several tours are listed. */
+export function Amount({ value, className = '', currency }: { value: Money; className?: string; currency?: Currency }) {
+  const onScreen = useCurrency();
+  return <span className={`money ${className}`}>{formatMoney(value, currency ?? onScreen)}</span>;
 }
 
 /** A difference from plan. The tone sets colour; the words or sign carry the meaning. */
@@ -102,12 +105,13 @@ type MoneyInputProps = Omit<NumberInputProps, 'value' | 'onChange' | 'prefix'> &
   onChange: (value: Money | undefined) => void;
 };
 
-/** Dollars on screen, cents in the data. */
+/** Dollars, euros or pounds on screen, cents in the data. */
 export function MoneyInput({ value, onChange, ...rest }: MoneyInputProps) {
+  const { symbol } = CURRENCIES[useCurrency()];
   return (
     <NumberInput
       {...rest}
-      prefix="$"
+      prefix={symbol}
       value={value === undefined ? undefined : value / 100}
       onChange={(n) => onChange(n === undefined ? undefined : dollars(n))}
     />

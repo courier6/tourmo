@@ -3,7 +3,7 @@
 // in, so setup can be left and picked up again from the tour list.
 
 import { useRef, useState } from 'react';
-import { describeLeg, finishSetup, formatDay, formatNumber, legHome, legInto, newId, routeMiles, unknownLegs, type DateKind, type Place } from '../core';
+import { carryOver, CURRENCIES, CURRENCY_OPTIONS, currencyOf, describeLeg, finishSetup, formatDay, formatNumber, legHome, legInto, newId, routeMiles, unknownLegs, type Currency, type DateKind, type Place } from '../core';
 import { Back, SelectField, TextField } from '../components';
 import { CityField, MilesField } from '../CityField';
 import { go } from '../router';
@@ -46,10 +46,12 @@ function Discard() {
 }
 
 export function NameStep() {
-  const { createTour } = useTours();
+  const { tours, createTour } = useTours();
   const [name, setName] = useState('');
   const [home, setHome] = useState('');
   const [homePlace, setHomePlace] = useState<Place>();
+  // A new tour is most often in the same currency as the last one.
+  const [currency, setCurrency] = useState<Currency>(() => carryOver(tours)?.currency ?? 'USD');
   const valid = name.trim() !== '';
 
   return (
@@ -64,7 +66,7 @@ export function NameStep() {
         onSubmit={(e) => {
           e.preventDefault();
           if (!valid) return;
-          createTour(name.trim(), home.trim(), homePlace);
+          createTour(name.trim(), home.trim(), homePlace, { currency });
           go('/setup/dates');
         }}
       >
@@ -79,6 +81,7 @@ export function NameStep() {
           }}
           note="Where you drive from and back to. Start typing and pick it from the list; the miles are worked out from it."
         />
+        <SelectField<Currency> label="Currency" value={currency} onChange={setCurrency} options={CURRENCY_OPTIONS} note="What the tour is paid and spent in. Every amount on it is in this one currency." />
         <button className="btn" type="submit" disabled={!valid} style={valid ? undefined : { opacity: 0.5 }}>
           Next: add the dates
         </button>
@@ -228,7 +231,11 @@ export function DatesStep() {
 
 export function RatesStep() {
   const { tour, update } = useTour();
+  const { tours } = useTours();
   const count = tour.dates.length;
+  // Money figures are only brought over from a tour kept in the same currency.
+  const from = carryOver(tours);
+  const fromOther = from && from.from === tour.ratesFrom && currencyOf(from) !== currencyOf(tour) ? CURRENCIES[currencyOf(from)].name : undefined;
 
   return (
     <main className="screen">
@@ -239,7 +246,13 @@ export function RatesStep() {
         <p className="note">
           {tour.name} {'·'} {count} {count === 1 ? 'date' : 'dates'}. Every field already has a figure, shown in grey: worked out from your dates, or estimated for this route. Type over one only where you know better.
         </p>
-        {tour.ratesFrom && <p className="note">The headcount, commissions, van, food and merch figures were started from {tour.ratesFrom}.</p>}
+        {tour.ratesFrom && (
+          <p className="note">
+            {fromOther
+              ? `The headcount and commissions were started from ${tour.ratesFrom}. Its money figures are in ${fromOther}, so they were not brought over.`
+              : `The headcount, commissions, van, food and merch figures were started from ${tour.ratesFrom}.`}
+          </p>
+        )}
       </header>
 
       <PeopleSection planning />
