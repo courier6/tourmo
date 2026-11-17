@@ -7,7 +7,8 @@ import { OneDate } from './screens/OneDate';
 import { LineEdit, Rates } from './screens/Rates';
 import { Tours } from './screens/Tours';
 import { useTours } from './store';
-import type { Tour } from './core';
+import { CurrencyCtx } from './currency';
+import { currencyOf, type Tour } from './core';
 
 type Tab = 'budget' | 'dates' | 'rates';
 
@@ -65,7 +66,7 @@ export function App() {
           Not saving. This browser refused to store your changes: its storage is full or switched off. Anything entered now is lost when this page closes.
         </p>
       )}
-      {el}
+      <CurrencyCtx.Provider value={tour ? currencyOf(tour) : 'USD'}>{el}</CurrencyCtx.Provider>
       {tab && (
         <nav className="bar" aria-label="Sections">
           {TABS.map(([id, label, to]) => (

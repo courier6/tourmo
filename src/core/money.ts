@@ -1,4 +1,4 @@
-import type { Money } from './types';
+import type { Currency, Money } from './types';
 
 /** Whole dollars (may carry cents as a decimal) to stored cents. */
 export const dollars = (n: number): Money => Math.round(n * 100);
@@ -43,13 +43,29 @@ export function parseTyped(text: string): number | undefined | 'invalid' {
   return k ? n * 1000 : n;
 }
 
-/** "$1,280". Cents are shown only when there are any. */
-export function formatMoney(cents: Money): string {
+/** How each currency is written. `one` and `name` are for sentences: "a euro amount", "the odd euros". */
+export const CURRENCIES: Record<Currency, { symbol: string; one: string; name: string; label: string }> = {
+  USD: { symbol: '$', one: 'dollar', name: 'dollars', label: 'US dollars ($)' },
+  EUR: { symbol: '€', one: 'euro', name: 'euros', label: 'Euros (€)' },
+  GBP: { symbol: '£', one: 'pound', name: 'pounds', label: 'Pounds (£)' },
+};
+
+/** Every currency with its label, for a select. */
+export const CURRENCY_OPTIONS = (Object.keys(CURRENCIES) as Currency[]).map((c): [Currency, string] => [c, CURRENCIES[c].label]);
+
+/** The currency a tour is kept in. A tour saved before there was a choice is in dollars. */
+export const currencyOf = (tour: { currency?: Currency }): Currency => tour.currency ?? 'USD';
+
+/**
+ * "$1,280" or "€1,280". Cents are shown only when there are any. The currency
+ * only picks the symbol: every currency is written the same way, symbol first.
+ */
+export function formatMoney(cents: Money, currency: Currency = 'USD'): string {
   const abs = Math.abs(Math.round(cents));
   const whole = Math.floor(abs / 100);
   const frac = abs % 100;
   const text = whole.toLocaleString('en-US') + (frac ? '.' + String(frac).padStart(2, '0') : '');
-  return (cents < 0 ? '−' : '') + '$' + text;
+  return (cents < 0 ? '−' : '') + CURRENCIES[currency].symbol + text;
 }
 
 /** "70%" or "12.5%". */

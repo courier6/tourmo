@@ -2,7 +2,7 @@
 // against today. A plain list in the same ledger style as the other screens.
 
 import { useState } from 'react';
-import { budget, currentEstimates, formatMonth, formatRange, localToday, SAMPLE_TOUR_IDS, showDates, tourPhase, type Tour, type TourPhase } from '../core';
+import { budget, currencyOf, currentEstimates, formatMonth, formatRange, localToday, SAMPLE_TOUR_IDS, showDates, tourPhase, type Tour, type TourPhase } from '../core';
 import { Amount } from '../components';
 import { href } from '../router';
 import { backupOf, readSaved, todayFor, UNREADABLE_KEY, useTours } from '../store';
@@ -71,7 +71,7 @@ function TourRow({ tour, phase }: { tour: Tour; phase: TourPhase }) {
           </span>
         </span>
         <span className="end">
-          <Amount value={net} />
+          <Amount value={net} currency={currencyOf(tour)} />
           <span className="chev" aria-hidden="true">
             {'›'}
           </span>
@@ -256,7 +256,8 @@ export function Tours() {
             : figures === 'kept'
               ? 'Kept from the last time they were looked up. These and straight-line drive estimates are used.'
               : 'The figures saved with the app. These and straight-line drive estimates are used.'}{' '}
-          Gas prices: week of {formatRange(gas.asOf, gas.asOf)}. Lodging rates: federal year {lodging.fiscalYear}. Van rental: {formatMonth(van.asOf)}.
+          Gas prices: week of {formatRange(gas.asOf, gas.asOf)}. Lodging rates: federal year {lodging.fiscalYear}. Van rental: {formatMonth(van.asOf)}. They are United States figures, used on tours kept in
+          dollars only.
         </p>
       </section>
 

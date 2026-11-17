@@ -3,7 +3,8 @@
 // from where the two cities are, when both were picked from the city list.
 
 import { sameCity } from './dates';
-import type { KeptDrive, Place, Tour, TourDate } from './types';
+import type { KeptDrive, Place, Tour, TourDate, Units } from './types';
+import { formatDistance } from './units';
 
 /**
  * Roads are longer than the straight line between two cities. Between cities
@@ -171,13 +172,13 @@ export function unknownLegs(tour: Tour): number {
 
 /**
  * "256 mi drive, allow 4 h 50 min", "about 275 mi drive" for an estimate, or
- * nothing when there is no drive. The routing service's times assume modest
+ * nothing when there is no drive. In kilometres for a tour shown in them. The routing service's times assume modest
  * speeds and no stops, so they are given as time to allow, not a forecast.
  */
-export function describeLeg(l: Leg): string {
+export function describeLeg(l: Leg, units: Units = 'us'): string {
   const time = l.minutes ? `, allow ${formatDrive(l.minutes)}` : '';
-  if (l.source === 'typed') return l.miles > 0 ? `${l.miles.toLocaleString('en-US')} mi drive${time}` : '';
-  if (l.source === 'road') return `${l.miles.toLocaleString('en-US')} mi drive${time}`;
-  if (l.source === 'estimated') return `about ${l.miles.toLocaleString('en-US')} mi drive`;
+  if (l.source === 'typed') return l.miles > 0 ? `${formatDistance(l.miles, units)} drive${time}` : '';
+  if (l.source === 'road') return `${formatDistance(l.miles, units)} drive${time}`;
+  if (l.source === 'estimated') return `about ${formatDistance(l.miles, units)} drive`;
   return l.source === 'unknown' ? 'drive not known' : '';
 }

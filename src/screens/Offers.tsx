@@ -4,10 +4,10 @@ import {
   describeOffer,
   examplePayouts,
   formatDay,
-  formatMoney,
   guaranteedMinimum,
+  CURRENCIES,
   parseOffer,
-  SHORTHAND_EXAMPLES,
+  shorthandExamples,
   showDates,
   showPlan,
   toOffer,
@@ -17,6 +17,7 @@ import {
   type ParsedOffer,
 } from '../core';
 import { Amount, Back, MoneyField, NumberField, SelectField } from '../components';
+import { useCurrency, useMoney } from '../currency';
 import { go, href } from '../router';
 import { useTour } from '../store';
 
@@ -85,14 +86,16 @@ const TYPES: [OfferType, string][] = [
 
 export function OfferEntry({ dateId }: { dateId: string }) {
   const { tour, update } = useTour();
+  const currency = useCurrency();
+  const money = useMoney();
   const date = tour.dates.find((d) => d.id === dateId);
   const shows = showDates(tour);
 
   const [raw, setRaw] = useState(date?.offer?.raw ?? '');
   const [fields, setFields] = useState<Fields>(() => (date?.offer ? { ...date.offer } : fromParse(parseOffer(''))));
-  const [reading, setReading] = useState<ParsedOffer>(() => parseOffer(date?.offer?.raw ?? ''));
+  const [reading, setReading] = useState<ParsedOffer>(() => parseOffer(date?.offer?.raw ?? '', currency));
   // The fields corrected by hand. On a saved offer they are the ones that differ from what its text reads as.
-  const [byHand, setByHand] = useState<(keyof Fields)[]>(() => (date?.offer ? differing({ ...date.offer }, fromParse(parseOffer(date.offer.raw))) : []));
+  const [byHand, setByHand] = useState<(keyof Fields)[]>(() => (date?.offer ? differing({ ...date.offer }, fromParse(parseOffer(date.offer.raw, currency))) : []));
 
   if (!date) {
     return (
@@ -108,7 +111,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
   // fixing a typo does not put "Taken of" back to gross.
   const onRaw = (text: string) => {
     setRaw(text);
-    const p = parseOffer(text);
+    const p = parseOffer(text, currency);
     const read = fromParse(p);
     const changed = differing(fromParse(reading), read);
     // Writing "gross" or "net" where neither stood before says something new about the basis, even when the reading is the same.
@@ -158,7 +161,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
             autoCapitalize="off"
             spellCheck={false}
             value={raw}
-            placeholder="$1K vs 70%"
+            placeholder={`${CURRENCIES[currency].symbol}1K vs 70%`}
             aria-describedby="offer-forms"
             onChange={(e) => onRaw(e.target.value)}
           />
@@ -169,7 +172,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
             Read as
           </h2>
           <p className="reading" role="status">
-            {empty ? 'Type an offer above, or fill in the fields.' : reading.ok || fields.guarantee !== undefined ? describeOffer(offer) : 'Could not read that. Fill in the fields below; your text is kept as typed.'}
+            {empty ? 'Type an offer above, or fill in the fields.' : reading.ok || fields.guarantee !== undefined ? describeOffer(offer, currency) : 'Could not read that. Fill in the fields below; your text is kept as typed.'}
           </p>
           {!empty && reading.doubts.length > 0 && (
             <div className="note bad" role="alert" style={{ marginTop: 4 }}>
@@ -241,7 +244,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
             {examplePayouts(offer).map((row) => (
               <li className="row" key={row.basis} style={{ minHeight: 48 }}>
                 <span className="name">
-                  If the {offer.basis} is <span className="money">{formatMoney(row.basis)}</span>
+                  If the {offer.basis} is <span className="money">{money(row.basis)}</span>
                 </span>
                 <Amount value={row.payout} />
               </li>
@@ -250,7 +253,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
         </section>
 
         <p className="note" id="offer-forms" style={{ marginTop: 16 }}>
-          Also reads: <span className="money">{SHORTHAND_EXAMPLES.join('  ·  ')}</span>
+          Also reads: <span className="money">{shorthandExamples(currency).join('  ·  ')}</span>
         </p>
 
         <button className="btn" type="submit">

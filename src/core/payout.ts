@@ -1,5 +1,5 @@
 import { formatMoney, formatPercent, percentOf } from './money';
-import type { Money, Offer } from './types';
+import type { Currency, Money, Offer } from './types';
 
 /** What the offer puts into the plan. */
 export function guaranteedMinimum(offer: Offer): Money {
@@ -29,37 +29,39 @@ export function payout(offer: Offer, basis: Money): Money {
 }
 
 /** One sentence saying how the payout came out, for the One date screen. */
-export function explainPayout(offer: Offer, basis: Money): string {
+export function explainPayout(offer: Offer, basis: Money, currency: Currency = 'USD'): string {
+  const money = (cents: Money) => formatMoney(cents, currency);
   const rate = offer.percentage ?? 0;
   const pct = formatPercent(rate);
   switch (offer.type) {
     case 'flat':
-      return `Flat deal: ${formatMoney(offer.guarantee)} whatever the door does.`;
+      return `Flat deal: ${money(offer.guarantee)} whatever the door does.`;
     case 'versus': {
       const share = percentOf(rate, basis);
       return share > offer.guarantee
-        ? `${pct} is ${formatMoney(share)}, which beats the ${formatMoney(offer.guarantee)} guarantee.`
-        : `${pct} is ${formatMoney(share)}, so the ${formatMoney(offer.guarantee)} guarantee pays.`;
+        ? `${pct} is ${money(share)}, which beats the ${money(offer.guarantee)} guarantee.`
+        : `${pct} is ${money(share)}, so the ${money(offer.guarantee)} guarantee pays.`;
     }
     case 'plus': {
       if (offer.threshold === undefined) {
-        return `No threshold entered yet, so only the ${formatMoney(offer.guarantee)} guarantee counts.`;
+        return `No threshold entered yet, so only the ${money(offer.guarantee)} guarantee counts.`;
       }
       const over = Math.max(0, basis - offer.threshold);
       if (over === 0) {
-        return `The ${offer.basis} is not over ${formatMoney(offer.threshold)}, so the ${formatMoney(offer.guarantee)} guarantee pays.`;
+        return `The ${offer.basis} is not over ${money(offer.threshold)}, so the ${money(offer.guarantee)} guarantee pays.`;
       }
-      return `${pct} of the ${formatMoney(over)} over ${formatMoney(offer.threshold)} is ${formatMoney(percentOf(rate, over))}, on top of the ${formatMoney(offer.guarantee)} guarantee.`;
+      return `${pct} of the ${money(over)} over ${money(offer.threshold)} is ${money(percentOf(rate, over))}, on top of the ${money(offer.guarantee)} guarantee.`;
     }
     case 'percentage':
-      return `${pct} of ${formatMoney(basis)} is ${formatMoney(percentOf(rate, basis))}.`;
+      return `${pct} of ${money(basis)} is ${money(percentOf(rate, basis))}.`;
   }
 }
 
 /** The offer in plain words, for the "Read as" panel. */
-export function describeOffer(offer: Omit<Offer, 'raw'>): string {
+export function describeOffer(offer: Omit<Offer, 'raw'>, currency: Currency = 'USD'): string {
+  const money = (cents: Money) => formatMoney(cents, currency);
   const pct = offer.percentage === undefined ? 'a percentage' : formatPercent(offer.percentage);
-  const g = formatMoney(offer.guarantee);
+  const g = money(offer.guarantee);
   switch (offer.type) {
     case 'flat':
       return `${g} flat guarantee.`;
@@ -68,7 +70,7 @@ export function describeOffer(offer: Omit<Offer, 'raw'>): string {
     case 'plus':
       return offer.threshold === undefined
         ? `${g} guarantee, plus ${pct} of the ${offer.basis} over an amount that still needs entering.`
-        : `${g} guarantee, plus ${pct} of the ${offer.basis} over ${formatMoney(offer.threshold)}.`;
+        : `${g} guarantee, plus ${pct} of the ${offer.basis} over ${money(offer.threshold)}.`;
     case 'percentage':
       return `${pct} of the ${offer.basis}, no guarantee.`;
   }
