@@ -2,7 +2,7 @@
 // signal. No accounts and no sync: a tour lives on one device.
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { blankTour, carryOver, isTour, keepDrives, legs, localToday, newId, SAMPLE_TOUR_IDS, seedTours, tourPhase, type Place, type Tour } from './core';
+import { blankTour, carryOver, isTour, keepDrives, legs, localToday, newId, SAMPLE_TOUR_IDS, seedTours, tourPhase, type Place, type Tour, type TourChoices } from './core';
 import { figuresFrom, onLookup, refreshFigures, wantRoad } from './lookups';
 import { Ctx, type Store } from './storeContext';
 
@@ -232,10 +232,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
 
   const openTour = useCallback((id: string) => setData((prev) => (prev.activeTourId === id ? prev : { ...prev, activeTourId: id })), []);
 
-  const createTour = useCallback((name: string, homeCity: string, homePlace?: Place) => {
+  const createTour = useCallback((name: string, homeCity: string, homePlace?: Place, choices?: TourChoices) => {
     const id = newId('tour');
     // Rates start from the band's own last tour; anything it cannot supply is estimated.
-    setData((prev) => ({ ...prev, tours: [...prev.tours, blankTour(id, name, homeCity, homePlace, carryOver(prev.tours))], activeTourId: id }));
+    setData((prev) => ({ ...prev, tours: [...prev.tours, blankTour(id, name, homeCity, homePlace, carryOver(prev.tours), choices)], activeTourId: id }));
     return id;
   }, []);
 

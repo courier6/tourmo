@@ -1,15 +1,21 @@
 // Starting a tour from nothing, and placing a tour in time for the tour list.
 
-import { keepEstimates, lodgingFor, tourRates } from './rates';
+import { hasUsFigures, keepEstimates, lodgingFor, tourRates } from './rates';
 import { keepDrives } from './route';
 import { SAMPLE_TOUR_IDS } from './seed';
 import { showDates, tourSpan } from './calc';
-import type { Commission, EstimatedRate, Money, Place, Tour, TourDate } from './types';
+import { CURRENCIES, currencyOf } from './money';
+import type { Commission, Currency, EstimatedRate, Money, Place, Tour, TourDate, Units } from './types';
+import { UNIT_WORDS } from './units';
 
 /** What a new tour starts with, taken from the band's own latest tour. */
 export interface CarryOver {
   /** The tour the figures were taken from. */
   from: string;
+  /** The currency its money figures are in. Empty = US dollars. */
+  currency?: Currency;
+  /** The units it is shown in. Empty = miles and gallons. */
+  units?: Units;
   commissions: Commission[];
   dailyRate?: Money;
   mpg?: number;
@@ -40,6 +46,8 @@ export function carryOver(tours: Tour[]): CarryOver | undefined {
   const merch = sold.length ? Math.round(sold.reduce((a, b) => a + b, 0) / sold.length / 500) * 500 : latest.merchPerShowDefault;
   return {
     from: latest.name,
+    currency: latest.currency,
+    units: latest.units,
     commissions: structuredClone(latest.commissions),
     dailyRate: own('vanDailyRate', latest.vehicle.dailyRate),
     mpg: own('mpg', latest.fuel.mpg),
@@ -53,21 +61,39 @@ export function carryOver(tours: Tour[]): CarryOver | undefined {
   };
 }
 
-/** A tour with a name and nothing else, at the first step after naming. */
-export function blankTour(id: string, name: string, homeCity = '', homePlace?: Place, carried?: CarryOver): Tour {
+/** What is chosen for a tour when it is named. */
+export interface TourChoices {
+  currency?: Currency;
+  units?: Units;
+}
+
+/**
+ * A tour with a name and nothing else, at the first step after naming. It is
+ * kept in the currency and units chosen for it, or failing that the last
+ * tour's. Money
+ * means nothing in another currency, and a tour somewhere else is driven in
+ * another van, so those figures are only brought over from a tour in the
+ * same currency. Who travels and who takes a cut come along either way.
+ */
+export function blankTour(id: string, name: string, homeCity = '', homePlace?: Place, carried?: CarryOver, choices: TourChoices = {}): Tour {
+  const currency = choices.currency ?? carried?.currency ?? 'USD';
+  const units = choices.units ?? carried?.units ?? 'us';
+  const figures = carried && currencyOf(carried) === currency ? carried : undefined;
   return {
     id,
     name,
     homeCity,
     ...(homePlace ? { homePlace } : {}),
+    ...(currency === 'USD' ? {} : { currency }),
+    ...(units === 'us' ? {} : { units }),
     commissions: carried?.commissions ?? [],
-    vehicle: { dailyRate: carried?.dailyRate },
-    fuel: { mpg: carried?.mpg },
-    merchPerShowDefault: carried?.merchPerShow,
-    lodgingPerNightDefault: carried?.lodgingPerNight,
+    vehicle: { dailyRate: figures?.dailyRate },
+    fuel: { mpg: figures?.mpg },
+    merchPerShowDefault: figures?.merchPerShow,
+    lodgingPerNightDefault: figures?.lodgingPerNight,
     lodgingRooms: carried?.lodgingRooms,
     people: carried?.people,
-    perDiem: carried?.perDiem,
+    perDiem: figures?.perDiem,
     merchCostRate: carried?.merchCostRate,
     splitBetween: carried?.splitBetween,
     ratesFrom: carried?.from,
@@ -94,6 +120,59 @@ export function finishSetup(tour: Tour): void {
     d.lodging.plan = lodgingFor(tour, d);
   }
   delete tour.setup;
+}
+
+/**
+ * Lets go of the United States estimates a tour holds: the van rate, fuel
+ * price and lodging kept from setup, and every night still planned at the
+ * estimate for its city. Figures the band typed are left alone.
+ */
+function releaseUsFigures(tour: Tour): void {
+  const kept = new Set(tour.estimated ?? []);
+  const ownLodging = tour.lodgingPerNightDefault !== undefined && !kept.has('lodgingPerNight');
+  if (!ownLodging) for (const d of tour.dates) if (d.lodging.plan > 0 && d.lodging.plan === lodgingFor(tour, d)) d.lodging.plan = 0;
+  if (kept.delete('vanDailyRate')) delete tour.vehicle.dailyRate;
+  if (kept.delete('gasPrice')) delete tour.fuel.pricePerGallon;
+  if (kept.delete('lodgingPerNight')) delete tour.lodgingPerNightDefault;
+  if (tour.estimated) tour.estimated = [...kept];
+}
+
+/**
+ * Keeps the tour in another currency. Nothing is converted: every figure
+ * keeps its number and only the symbol changes. A tour that leaves dollars
+ * also lets go of its United States estimates, which would otherwise read
+ * as figures in the new currency. Changes the tour passed in.
+ */
+export function setCurrency(tour: Tour, currency: Currency): void {
+  if (hasUsFigures(tour) && currency !== 'USD') releaseUsFigures(tour);
+  if (currency === 'USD') delete tour.currency;
+  else tour.currency = currency;
+}
+
+/**
+ * Sets the lodging figure of a tour that has no estimate for it. Its nights
+ * were planned from this figure, or at 0 for want of one, so each night still
+ * planned at the old figure takes the new one. A night changed by hand under
+ * Dates is left alone, and so is a night at home. During setup the nights
+ * are filled when it ends. Changes the tour passed in.
+ */
+export function setOwnLodging(tour: Tour, value: Money | undefined): void {
+  const before = tour.dates.map((d) => lodgingFor(tour, d));
+  tour.lodgingPerNightDefault = value;
+  if (tour.setup) return;
+  tour.dates.forEach((d, i) => {
+    if (d.lodging.plan === before[i]) d.lodging.plan = lodgingFor(tour, d);
+  });
+}
+
+/**
+ * Shows the tour in other units. Its distances, mileage and fuel price are
+ * stored in miles and gallons either way, so nothing else changes. Changes
+ * the tour passed in.
+ */
+export function setUnits(tour: Tour, units: Units): void {
+  if (units === 'us') delete tour.units;
+  else tour.units = units;
 }
 
 export type TourPhase = 'setup' | 'upcoming' | 'underway' | 'past';
@@ -165,6 +244,8 @@ export function isTour(v: unknown): v is Tour {
     typeof v.name === 'string' &&
     typeof v.homeCity === 'string' &&
     (v.homePlace === undefined || isPlace(v.homePlace)) &&
+    (v.currency === undefined || isOneOf(v.currency, ...Object.keys(CURRENCIES))) &&
+    (v.units === undefined || isOneOf(v.units, ...Object.keys(UNIT_WORDS))) &&
     Array.isArray(v.commissions) &&
     v.commissions.every(isCommission) &&
     isObject(v.vehicle) &&

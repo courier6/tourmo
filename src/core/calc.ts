@@ -3,11 +3,12 @@
 // worked example.
 
 import { addDays, cityName, daysBetween } from './dates';
-import { floorToDollar, formatMoney, formatNumber, formatPercent, percentOf, roundToDollar } from './money';
+import { currencyOf, floorToDollar, formatMoney, formatNumber, formatPercent, percentOf, roundToDollar } from './money';
 import { guaranteedMinimum, payout } from './payout';
-import { peopleOn, tourDays, tourRates } from './rates';
+import { peopleOn, tourDays, tourRates, type Rate } from './rates';
 import { legInto, routeMiles, unknownLegs } from './route';
-import type { Commission, ExtraLine, Money, Tour, TourDate } from './types';
+import type { Commission, Currency, ExtraLine, Money, Tour, TourDate } from './types';
+import { formatDistance, formatMileage, fuelPriceIn, UNIT_WORDS, unitsOf } from './units';
 
 const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -107,6 +108,26 @@ function merchCostOnDate(rate: number, date: TourDate): { plan: Money; now: Mone
   return { plan: percentOf(rate, date.merch.plan), now: percentOf(rate, track(date.merch.plan, date.merch.actual)) };
 }
 
+// ---------- figures the plan is waiting for ----------
+
+const missing = (r: Rate) => r.noEstimate === true && !r.typed;
+
+/** No room is planned on any night, and there is no figure to plan one from. */
+const lodgingMissing = (tour: Tour, lodging: Rate) => missing(lodging) && tour.dates.every((d) => d.lodging.plan === 0);
+
+/**
+ * What the plan counts as 0 only because nobody has typed it: the figures a
+ * tour that is not in dollars has no estimate for. Empty for a dollar tour.
+ */
+export function missingFigures(tour: Tour): string[] {
+  const rates = tourRates(tour);
+  return [
+    ...(missing(rates.vanDailyRate) ? ['the van daily rate'] : []),
+    ...(missing(rates.gasPrice) ? ['the fuel price'] : []),
+    ...(lodgingMissing(tour, rates.lodgingPerNight) ? ['lodging'] : []),
+  ];
+}
+
 // ---------- the budget: one list of lines, each with plan and now ----------
 
 export type LineKind = 'shows' | 'merch' | 'additional' | 'commission' | 'merchCost' | 'vehicle' | 'fuel' | 'lodging' | 'food' | 'extra' | 'dateExtras';
@@ -140,6 +161,7 @@ export interface Budget {
 }
 
 export function budget(tour: Tour): Budget {
+  const money = (cents: Money) => formatMoney(cents, currencyOf(tour));
   const rates = tourRates(tour);
   const shows = showDates(tour);
   const settledCount = shows.filter((d) => d.settled).length;
@@ -182,7 +204,7 @@ export function budget(tour: Tour): Budget {
       plan: l.plan,
       now: trackTourWide(l.plan, l.actual, l.final),
       how: 'Added by you',
-      progress: l.actual === undefined ? 'Not received yet' : `${formatMoney(l.actual)} received${l.final ? ', final' : ' so far'}`,
+      progress: l.actual === undefined ? 'Not received yet' : `${money(l.actual)} received${l.final ? ', final' : ' so far'}`,
     }));
 
   const revenue: BudgetLine[] = [
@@ -203,7 +225,7 @@ export function budget(tour: Tour): Budget {
       direction: 'in',
       plan: planMerch,
       now: nowMerch,
-      how: merchUniform ? `${formatMoney(rates.merchPerShow.value)} × ${plural(shows.length, 'show')}` : plural(shows.length, 'show'),
+      how: merchUniform ? `${money(rates.merchPerShow.value)} × ${plural(shows.length, 'show')}` : plural(shows.length, 'show'),
       progress: `${merchIn} of ${plural(shows.length, 'show')} in`,
     },
     ...additional,
@@ -225,8 +247,8 @@ export function budget(tour: Tour): Budget {
       direction: 'out',
       plan: sum(perDate.map((x) => x.plan)),
       now: sum(perDate.map((x) => x.now)),
-      how: `${formatPercent(c.rate)} of ${formatMoney(planBase)} ${of}`,
-      progress: `${formatPercent(c.rate)} of ${formatMoney(nowBase)}`,
+      how: `${formatPercent(c.rate)} of ${money(planBase)} ${of}`,
+      progress: `${formatPercent(c.rate)} of ${money(nowBase)}`,
     };
   });
 
@@ -243,8 +265,8 @@ export function budget(tour: Tour): Budget {
             direction: 'out',
             plan: sum(costs.map((x) => x.plan)),
             now: sum(costs.map((x) => x.now)),
-            how: `${formatPercent(costRate)}${rates.merchCost.estimated ? ' (estimate)' : ''} of ${formatMoney(planMerch)} merch sales`,
-            progress: `${formatPercent(costRate)} of ${formatMoney(nowMerch)}`,
+            how: `${formatPercent(costRate)}${rates.merchCost.estimated ? ' (estimate)' : ''} of ${money(planMerch)} merch sales`,
+            progress: `${formatPercent(costRate)} of ${money(nowMerch)}`,
           },
         ]
       : [];
@@ -252,8 +274,9 @@ export function budget(tour: Tour): Budget {
   const v = tour.vehicle;
   const planVan = roundToDollar(rates.vanDailyRate.value * rates.vanDays.value);
   // A van that is not rented, with nothing paid for one, has no rental line.
+  // A rate nobody has typed yet is not that: the line stays, and says so.
   const vehicle: BudgetLine[] =
-    planVan === 0 && v.actual === undefined
+    planVan === 0 && v.actual === undefined && !missing(rates.vanDailyRate)
       ? []
       : [
           {
@@ -263,13 +286,21 @@ export function budget(tour: Tour): Budget {
             direction: 'out',
             plan: planVan,
             now: trackTourWide(planVan, v.actual, v.final),
-            how: `${formatMoney(rates.vanDailyRate.value)}${rates.vanDailyRate.estimated ? ' (estimate)' : ''} × ${plural(rates.vanDays.value, 'day')}`,
-            progress: v.actual === undefined ? 'Not paid yet' : `${formatMoney(v.actual)} paid${v.final ? ', final' : ' so far'}`,
+            how: missing(rates.vanDailyRate) ? 'No daily rate yet: type it in Rates' : `${money(rates.vanDailyRate.value)}${rates.vanDailyRate.estimated ? ' (estimate)' : ''} × ${plural(rates.vanDays.value, 'day')}`,
+            progress: v.actual === undefined ? 'Not paid yet' : `${money(v.actual)} paid${v.final ? ', final' : ' so far'}`,
           },
         ];
 
   const planFuel = fuelPlan(tour);
   const spent = fuelSpent(tour);
+  // The same sum either way: miles ÷ mpg, or kilometres × litres per 100 km.
+  const units = unitsOf(tour);
+  const estimate = rates.gasPrice.estimated ? ' (estimate)' : '';
+  const fuelSum = missing(rates.gasPrice)
+    ? `${formatDistance(routeMiles(tour), units)}. No fuel price yet: type it in Rates`
+    : units === 'metric'
+      ? `${formatDistance(routeMiles(tour), units)} × ${formatMileage(rates.mpg.value, units)} × ${money(fuelPriceIn(rates.gasPrice.value, units))} a litre${estimate}`
+      : `${formatNumber(routeMiles(tour))} mi ÷ ${formatNumber(rates.mpg.value)} mpg × ${money(rates.gasPrice.value)}${estimate}`;
   const fuel: BudgetLine = {
     id: 'fuel',
     kind: 'fuel',
@@ -277,13 +308,11 @@ export function budget(tour: Tour): Budget {
     direction: 'out',
     plan: planFuel,
     now: trackTourWide(planFuel, spent, tour.fuel.final),
-    how:
-      `Route: ${formatNumber(routeMiles(tour))} mi ÷ ${formatNumber(rates.mpg.value)} mpg × ${formatMoney(rates.gasPrice.value)}${rates.gasPrice.estimated ? ' (estimate)' : ''}` +
-      (unknownLegs(tour) ? `. ${plural(unknownLegs(tour), 'drive')} not counted: miles not known` : ''),
+    how: `Route: ${fuelSum}` + (unknownLegs(tour) ? `. ${plural(unknownLegs(tour), 'drive')} not counted: ${UNIT_WORDS[units].distances} not known` : ''),
     progress:
       spent > planFuel
-        ? `${formatMoney(spent)} spent, ${formatMoney(spent - planFuel)} over`
-        : `${formatMoney(spent)} spent, ${formatMoney(planFuel - spent)} left`,
+        ? `${money(spent)} spent, ${money(spent - planFuel)} over`
+        : `${money(spent)} spent, ${money(planFuel - spent)} left`,
   };
 
   const nights = tour.dates.filter((d) => d.lodging.plan > 0 || d.lodging.actual !== undefined);
@@ -297,9 +326,11 @@ export function budget(tour: Tour): Budget {
     direction: 'out',
     plan: sum(tour.dates.map((d) => d.lodging.plan)),
     now: sum(tour.dates.map((d) => track(d.lodging.plan, d.lodging.actual))),
-    how: lodgingUniform
-      ? `${formatMoney(rates.lodgingPerNight.value)}${rates.lodgingPerNight.estimated ? ' (estimate)' : ''} × ${plural(plannedNights.length, 'night')}`
-      : plural(plannedNights.length, 'night') + (rates.lodgingPerNight.estimated && plannedNights.length ? ', each estimated for its city' : ''),
+    how: lodgingMissing(tour, rates.lodgingPerNight)
+      ? 'No lodging figure yet: type it in Rates'
+      : lodgingUniform
+        ? `${money(rates.lodgingPerNight.value)}${rates.lodgingPerNight.estimated ? ' (estimate)' : ''} × ${plural(plannedNights.length, 'night')}`
+        : plural(plannedNights.length, 'night') + (rates.lodgingPerNight.estimated && plannedNights.length ? ', each estimated for its city' : ''),
     progress: `${nightsIn} of ${plural(nights.length, 'night')} in`,
   };
 
@@ -318,8 +349,8 @@ export function budget(tour: Tour): Budget {
             direction: 'out',
             plan: planFood,
             now: trackTourWide(planFood, eaten, tour.foodFinal),
-            how: `${formatMoney(rates.perDiem.value)}${rates.perDiem.estimated ? ' (estimate)' : ''} × ${rates.people} ${rates.people === 1 ? 'person' : 'people'} × ${plural(days, 'day')}`,
-            progress: eaten > planFood ? `${formatMoney(eaten)} spent, ${formatMoney(eaten - planFood)} over` : `${formatMoney(eaten)} spent, ${formatMoney(planFood - eaten)} left`,
+            how: `${money(rates.perDiem.value)}${rates.perDiem.estimated ? ' (estimate)' : ''} × ${rates.people} ${rates.people === 1 ? 'person' : 'people'} × ${plural(days, 'day')}`,
+            progress: eaten > planFood ? `${money(eaten)} spent, ${money(eaten - planFood)} over` : `${money(eaten)} spent, ${money(planFood - eaten)} left`,
           },
         ]
       : [];
@@ -334,7 +365,7 @@ export function budget(tour: Tour): Budget {
       plan: l.plan,
       now: trackTourWide(l.plan, l.actual, l.final),
       how: 'Added by you',
-      progress: l.actual === undefined ? 'Not paid yet' : `${formatMoney(l.actual)} paid${l.final ? ', final' : ' so far'}`,
+      progress: l.actual === undefined ? 'Not paid yet' : `${money(l.actual)} paid${l.final ? ', final' : ' so far'}`,
     }));
 
   const dateOut = tour.dates.flatMap((d) => d.lines.filter((l) => l.direction === 'out'));
@@ -381,28 +412,28 @@ export interface Diff {
 }
 
 /** Revenue lines show a signed amount: +$280, −$35, on plan. */
-export function revenueDiff(plan: Money, now: Money): Diff {
+export function revenueDiff(plan: Money, now: Money, currency: Currency = 'USD'): Diff {
   const d = now - plan;
   if (d === 0) return { text: 'on plan', tone: 'flat' };
-  return d > 0 ? { text: `+${formatMoney(d)}`, tone: 'good' } : { text: formatMoney(d), tone: 'bad' };
+  return d > 0 ? { text: `+${formatMoney(d, currency)}`, tone: 'good' } : { text: formatMoney(d, currency), tone: 'bad' };
 }
 
 /** Expense lines show words: $50 over, $20 under, on plan. */
-export function expenseDiff(plan: Money, now: Money): Diff {
+export function expenseDiff(plan: Money, now: Money, currency: Currency = 'USD'): Diff {
   const d = now - plan;
   if (d === 0) return { text: 'on plan', tone: 'flat' };
-  return d > 0 ? { text: `${formatMoney(d)} over`, tone: 'bad' } : { text: `${formatMoney(-d)} under`, tone: 'good' };
+  return d > 0 ? { text: `${formatMoney(d, currency)} over`, tone: 'bad' } : { text: `${formatMoney(-d, currency)} under`, tone: 'good' };
 }
 
 /** Net: $275 ahead, $85 behind, on plan. */
-export function netDiff(plan: Money, now: Money): Diff {
+export function netDiff(plan: Money, now: Money, currency: Currency = 'USD'): Diff {
   const d = now - plan;
   if (d === 0) return { text: 'on plan', tone: 'flat' };
-  return d > 0 ? { text: `${formatMoney(d)} ahead`, tone: 'good' } : { text: `${formatMoney(-d)} behind`, tone: 'bad' };
+  return d > 0 ? { text: `${formatMoney(d, currency)} ahead`, tone: 'good' } : { text: `${formatMoney(-d, currency)} behind`, tone: 'bad' };
 }
 
-export const lineDiff = (line: BudgetLine): Diff =>
-  line.direction === 'in' ? revenueDiff(line.plan, line.now) : expenseDiff(line.plan, line.now);
+export const lineDiff = (line: BudgetLine, currency: Currency = 'USD'): Diff =>
+  line.direction === 'in' ? revenueDiff(line.plan, line.now, currency) : expenseDiff(line.plan, line.now, currency);
 
 // ---------- one date ----------
 
@@ -453,6 +484,7 @@ export interface DateResult {
  * in its lodging, extras, commissions and merch costs. Only lines with an actual count.
  */
 export function dateAgainstPlan(tour: Tour, date: TourDate): DateResult {
+  const currency = currencyOf(tour);
   const causes: Cause[] = [];
   let entered = 0;
   const add = (label: string, direction: 'in' | 'out', plan: Money, actual: Money | undefined) => {
@@ -460,7 +492,7 @@ export function dateAgainstPlan(tour: Tour, date: TourDate): DateResult {
     entered += 1;
     const change = actual - plan;
     if (change === 0) return;
-    causes.push({ label, direction, change, diff: direction === 'in' ? revenueDiff(plan, actual) : expenseDiff(plan, actual) });
+    causes.push({ label, direction, change, diff: direction === 'in' ? revenueDiff(plan, actual, currency) : expenseDiff(plan, actual, currency) });
   };
 
   if (date.kind === 'show') {

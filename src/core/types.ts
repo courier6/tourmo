@@ -1,6 +1,12 @@
 // The data model: a tour, its dates, offers and lines.
 
-export type Money = number; // US dollars, stored as whole cents
+export type Money = number; // the tour's currency, stored as whole cents
+
+/** The currencies a tour can be kept in. One per tour; nothing is converted. */
+export type Currency = 'USD' | 'EUR' | 'GBP';
+
+/** What distances and fuel are typed and shown in. They are stored in miles and gallons either way. */
+export type Units = 'us' | 'metric';
 
 export interface PlanActual {
   plan: Money;
@@ -40,10 +46,12 @@ export interface Tour {
   name: string;
   homeCity: string; // the route starts and ends here
   homePlace?: Place; // where homeCity is on the map
+  currency?: Currency; // what every amount on the tour is in. Empty = US dollars
+  units?: Units; // kilometres and litres on screen. Empty = miles and gallons
   commissions: Commission[];
   // Any rate left empty is estimated or worked out; see rates.ts. 0 is a real figure.
   vehicle: { dailyRate?: Money; days?: number; actual?: Money; final?: boolean };
-  fuel: { mpg?: number; pricePerGallon?: Money; final?: boolean };
+  fuel: { mpg?: number; pricePerGallon?: Money; final?: boolean }; // per gallon and unrounded when it was typed per litre
   people?: number; // everyone who travels, hired players and crew included. Empty = 4
   perDiem?: Money; // food for one person for one day
   foodFinal?: boolean; // food spending is finished, so what was spent is the figure

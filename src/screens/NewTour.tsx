@@ -3,7 +3,7 @@
 // in, so setup can be left and picked up again from the tour list.
 
 import { useRef, useState } from 'react';
-import { describeLeg, finishSetup, formatDay, formatNumber, legHome, legInto, newId, routeMiles, unknownLegs, type DateKind, type Place } from '../core';
+import { carryOver, CURRENCIES, CURRENCY_OPTIONS, currencyOf, describeLeg, finishSetup, formatDay, formatDistance, hasUsFigures, legHome, legInto, listed, missingFigures, newId, routeMiles, UNIT_WORDS, UNITS_OPTIONS, unitsOf, unknownLegs, type Currency, type DateKind, type Place, type Units } from '../core';
 import { Back, SelectField, TextField } from '../components';
 import { CityField, MilesField } from '../CityField';
 import { go } from '../router';
@@ -46,10 +46,13 @@ function Discard() {
 }
 
 export function NameStep() {
-  const { createTour } = useTours();
+  const { tours, createTour } = useTours();
   const [name, setName] = useState('');
   const [home, setHome] = useState('');
   const [homePlace, setHomePlace] = useState<Place>();
+  // A new tour is most often in the same currency and units as the last one.
+  const [currency, setCurrency] = useState<Currency>(() => carryOver(tours)?.currency ?? 'USD');
+  const [units, setUnits] = useState<Units>(() => carryOver(tours)?.units ?? 'us');
   const valid = name.trim() !== '';
 
   return (
@@ -64,11 +67,27 @@ export function NameStep() {
         onSubmit={(e) => {
           e.preventDefault();
           if (!valid) return;
-          createTour(name.trim(), home.trim(), homePlace);
+          createTour(name.trim(), home.trim(), homePlace, { currency, units });
           go('/setup/dates');
         }}
       >
         <TextField label="Tour name" value={name} onChange={setName} note="For example: Summer run" autoFocus />
+        {/* The currency comes before the city: it decides whether the city is picked from the list or typed. */}
+        <SelectField<Currency>
+          label="Currency"
+          value={currency}
+          onChange={(c) => {
+            setCurrency(c);
+            // Dollars go with miles and gallons, the others with kilometres and litres. Either can still be changed.
+            setUnits(c === 'USD' ? 'us' : 'metric');
+          }}
+          options={CURRENCY_OPTIONS}
+        />
+        <SelectField<Units> label="Distances and fuel" value={units} onChange={setUnits} options={UNITS_OPTIONS} />
+        <p className="note" style={{ marginTop: 8 }}>
+          Every amount on the tour is in this one currency. Both can be changed later under Rates.
+          {currency !== 'USD' && ' The gas, lodging and van estimates are for the United States, so on this tour you type those three figures yourself.'}
+        </p>
         <CityField
           label="Home city"
           value={home}
@@ -77,7 +96,13 @@ export function NameStep() {
             setHome(city);
             setHomePlace(place);
           }}
-          note="Where you drive from and back to. Start typing and pick it from the list; the miles are worked out from it."
+          note={
+            currency === 'USD'
+              ? `Where you drive from and back to. Start typing and pick it from the list; the ${UNIT_WORDS[units].distances} are worked out from it.`
+              : `Where the van starts from and comes back to: abroad, the city you pick it up in. The city list covers the United States and Canada only, so you type the ${UNIT_WORDS[units].distances} of each drive with the dates.`
+          }
+          units={units}
+          list={currency === 'USD'}
         />
         <button className="btn" type="submit" disabled={!valid} style={valid ? undefined : { opacity: 0.5 }}>
           Next: add the dates
@@ -93,6 +118,10 @@ function nextDay(iso: string): string {
 
 export function DatesStep() {
   const { tour, update } = useTour();
+  const units = unitsOf(tour);
+  const words = UNIT_WORDS[units];
+  // Drives are only worked out between cities of the list, which covers the United States and Canada.
+  const list = hasUsFigures(tour);
   const last = tour.dates.at(-1);
 
   const [date, setDate] = useState(last ? nextDay(last.date) : '');
@@ -135,7 +164,9 @@ export function DatesStep() {
       <header className="screen-head">
         <h1 className="title">Add the dates</h1>
         <p className="note">
-          {tour.name} {'·'} Add each day of the run: shows, off days and travel days. Pick each city from the list and the drives are worked out for you. Offers are entered later, from the budget.
+          {tour.name} {'·'} Add each day of the run: shows, off days and travel days.{' '}
+          {list ? 'Pick each city from the list and the drives are worked out for you.' : `Type each city and the ${words.distances} from the stop before: drives are only worked out for cities in the United States and Canada.`} Offers are entered
+          later, from the budget.
         </p>
       </header>
 
@@ -148,7 +179,7 @@ export function DatesStep() {
                   {formatDay(d.date)} {'·'} {d.city}
                 </span>
                 <span className="note">
-                  {[KIND_LABEL[d.kind], describeLeg(legInto(tour, d))].filter(Boolean).join(' · ')}
+                  {[KIND_LABEL[d.kind], describeLeg(legInto(tour, d), units)].filter(Boolean).join(' · ')}
                 </span>
               </span>
               <span className="end">
@@ -180,8 +211,10 @@ export function DatesStep() {
             setCity(c);
             setPlace(p);
           }}
-          note="Start typing and pick it from the list."
+          note={list ? 'Start typing and pick it from the list.' : undefined}
           inputRef={cityInput}
+          units={units}
+          list={list}
         />
         <SelectField
           label="Kind of day"
@@ -193,7 +226,7 @@ export function DatesStep() {
             ['travel', 'Travel day'],
           ]}
         />
-        {city.trim() !== '' && <MilesField label="Miles from the previous stop" value={miles} onChange={setMiles} leg={legInto(tour, { date, city, place, milesFromPrevious: miles })} />}
+        {city.trim() !== '' && <MilesField label={`${words.Distances} from the previous stop`} value={miles} onChange={setMiles} leg={legInto(tour, { date, city, place, milesFromPrevious: miles })} units={units} list={list} />}
         <button className="btn quiet" type="submit" disabled={!complete} style={complete ? undefined : { opacity: 0.5 }}>
           {tour.dates.length ? 'Add another date' : 'Add this date'}
         </button>
@@ -201,9 +234,9 @@ export function DatesStep() {
 
       {tour.dates.length > 0 && (
         <>
-          <MilesField label="Miles home from the last date" value={tour.milesHome} onChange={(v) => update((t) => (t.milesHome = v))} leg={legHome(tour)} />
+          <MilesField label={`${words.Distances} home from the last date`} value={tour.milesHome} onChange={(v) => update((t) => (t.milesHome = v))} leg={legHome(tour)} units={units} list={list} />
           <p className="note" style={{ marginTop: 16 }}>
-            Route so far: {formatNumber(routeMiles(tour))} mi{unknownLegs(tour) ? `, with ${unknownLegs(tour)} ${unknownLegs(tour) === 1 ? 'drive' : 'drives'} not counted because the miles are not known` : ''}.
+            Route so far: {formatDistance(routeMiles(tour), units)}{unknownLegs(tour) ? `, with ${unknownLegs(tour)} ${unknownLegs(tour) === 1 ? 'drive' : 'drives'} not counted because the ${words.distances} are not known` : ''}.
           </p>
         </>
       )}
@@ -228,7 +261,13 @@ export function DatesStep() {
 
 export function RatesStep() {
   const { tour, update } = useTour();
+  const { tours } = useTours();
   const count = tour.dates.length;
+  // Money figures are only brought over from a tour kept in the same currency.
+  const from = carryOver(tours);
+  // The figures this tour has no estimate for and that are still empty.
+  const missing = missingFigures(tour);
+  const fromOther = from && from.from === tour.ratesFrom && currencyOf(from) !== currencyOf(tour) ? CURRENCIES[currencyOf(from)].name : undefined;
 
   return (
     <main className="screen">
@@ -237,9 +276,18 @@ export function RatesStep() {
       <header className="screen-head">
         <h1 className="title">Set the rates</h1>
         <p className="note">
-          {tour.name} {'·'} {count} {count === 1 ? 'date' : 'dates'}. Every field already has a figure, shown in grey: worked out from your dates, or estimated for this route. Type over one only where you know better.
+          {tour.name} {'·'} {count} {count === 1 ? 'date' : 'dates'}.{' '}
+          {hasUsFigures(tour)
+            ? 'Every field already has a figure, shown in grey: worked out from your dates, or estimated for this route. Type over one only where you know better.'
+            : 'Most fields already have a figure, shown in grey. The van daily rate, the fuel price and lodging have none: the estimates for those are for the United States, so type your own.'}
         </p>
-        {tour.ratesFrom && <p className="note">The headcount, commissions, van, food and merch figures were started from {tour.ratesFrom}.</p>}
+        {tour.ratesFrom && (
+          <p className="note">
+            {fromOther
+              ? `The headcount and commissions were started from ${tour.ratesFrom}. Its money figures are in ${fromOther}, so they were not brought over.`
+              : `The headcount, commissions, van, food and merch figures were started from ${tour.ratesFrom}.`}
+          </p>
+        )}
       </header>
 
       <PeopleSection planning />
@@ -248,6 +296,11 @@ export function RatesStep() {
       <FuelSection planning />
       <DefaultsSection planning />
 
+      {missing.length > 0 && (
+        <p className="note bad" role="status" style={{ marginTop: 16 }}>
+          Not in the plan yet: {listed(missing)}. Type {missing.length === 1 ? 'it' : 'them'} above, or the plan counts {missing.length === 1 ? 'it' : 'them'} as 0.
+        </p>
+      )}
       <button
         className="btn"
         type="button"

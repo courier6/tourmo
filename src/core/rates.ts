@@ -7,9 +7,9 @@
 
 import bundled from '../data/estimates.json';
 import { daysBetween, formatMonth, formatRange, sameCity } from './dates';
-import { dollars, formatMoney } from './money';
+import { currencyOf, dollars, formatMoney } from './money';
 import { legs } from './route';
-import type { EstimatedRate, Money, Tour, TourDate } from './types';
+import type { Currency, EstimatedRate, Money, Tour, TourDate } from './types';
 
 export interface Estimates {
   gas: {
@@ -80,6 +80,14 @@ export function resetFigures(): void {
   current = bundled;
 }
 
+/**
+ * The gas prices, lodging rates and van rental figure the app holds are for
+ * the United States, in dollars, and its city list covers the United States
+ * and Canada. A tour kept in another currency is somewhere else, so it is
+ * given none of them: those figures are the band's to type.
+ */
+export const hasUsFigures = (tour: { currency?: Currency }): boolean => currencyOf(tour) === 'USD';
+
 /** A new tour is planned for this many people until the band says otherwise. */
 export const DEFAULT_PEOPLE = 4;
 
@@ -125,7 +133,8 @@ export function gasPriceIn(state: string | undefined, data: Estimates = current)
 }
 
 const roundUp = (amount: number, step: number) => Math.ceil(amount / step - 1e-9) * step;
-const listed = (items: string[]) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
+/** "a", "a and b", "a, b and c". */
+export const listed = (items: string[]) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
 const week = (data: Estimates) => formatRange(data.gas.asOf, data.gas.asOf);
 
 /**
@@ -178,6 +187,8 @@ export function lodgingFor(tour: Tour, date: Pick<TourDate, 'city' | 'place' | '
   if (sameCity(date.city, tour.homeCity)) return 0;
   const own = tour.lodgingPerNightDefault !== undefined && !(tour.estimated ?? []).includes('lodgingPerNight');
   if (own) return tour.lodgingPerNightDefault ?? 0;
+  // Outside the United States there is no rate to estimate from: nothing is planned until a figure is typed.
+  if (!hasUsFigures(tour)) return 0;
   const rooms = roomsFor(tour);
   return dollars(roundUp(roomRate(date.place?.area, stateOf(date.city), date.date, data) * rooms, 5));
 }
@@ -212,6 +223,8 @@ export interface Rate {
   estimate: number;
   /** Where the estimate comes from, in plain words. */
   basis: string;
+  /** True when the app has no estimate for this figure on this tour: it plans at 0 until one is typed. */
+  noEstimate?: boolean;
 }
 
 export interface TourRates {
@@ -241,10 +254,14 @@ export function tourRates(tour: Tour, data: Estimates = current): TourRates {
     basis,
   });
 
+  // A figure the app has no estimate for: the band's own, or nothing planned.
+  const own = (typed: number | undefined): Rate => ({ value: typed ?? 0, typed: typed !== undefined, estimated: false, estimate: 0, basis: 'no estimate outside the United States', noEstimate: true });
+
   const first = tour.dates[0];
   const last = tour.dates.at(-1);
-  const gas = gasEstimate(tour, data);
-  const lodging = lodgingEstimate(tour, data);
+  const us = hasUsFigures(tour);
+  const gas = us ? gasEstimate(tour, data) : undefined;
+  const lodging = us ? lodgingEstimate(tour, data) : undefined;
 
   const days = rate(tour.vehicle.days, undefined, suggestedVanDays(tour), first && last ? `${formatRange(first.date, last.date)}, plus a day to take it back` : 'no dates yet');
   days.estimated = false; // worked out from the dates, not a guess
@@ -253,12 +270,12 @@ export function tourRates(tour: Tour, data: Estimates = current): TourRates {
   merch.estimated = false; // left out, not guessed
 
   return {
-    vanDailyRate: rate(tour.vehicle.dailyRate, 'vanDailyRate', dollars(data.van.dailyRate), `the upper end of average passenger-van listings before tax, ${formatMonth(data.van.asOf)}`),
+    vanDailyRate: us ? rate(tour.vehicle.dailyRate, 'vanDailyRate', dollars(data.van.dailyRate), `the upper end of average passenger-van listings before tax, ${formatMonth(data.van.asOf)}`) : own(tour.vehicle.dailyRate),
     vanDays: days,
     mpg: rate(tour.fuel.mpg, 'mpg', data.van.mpg, 'a loaded gasoline passenger van'),
-    gasPrice: rate(tour.fuel.pricePerGallon, 'gasPrice', gas.value, gas.basis),
+    gasPrice: gas ? rate(tour.fuel.pricePerGallon, 'gasPrice', gas.value, gas.basis) : own(tour.fuel.pricePerGallon),
     merchPerShow: merch,
-    lodgingPerNight: rate(tour.lodgingPerNightDefault, 'lodgingPerNight', lodging.value, lodging.basis),
+    lodgingPerNight: lodging ? rate(tour.lodgingPerNightDefault, 'lodgingPerNight', lodging.value, lodging.basis) : own(tour.lodgingPerNightDefault),
     rooms: roomsFor(tour),
     perDiem: rate(tour.perDiem, 'perDiem', dollars(DEFAULT_PER_DIEM), 'a common per diem on a van tour'),
     people: peopleOn(tour),
@@ -279,14 +296,15 @@ const KEPT: [EstimatedRate, (r: TourRates) => Rate, (tour: Tour, value: number) 
  * Writes today's estimates into the tour, for every outside figure still left
  * empty, and remembers which ones they were. Done when a tour's setup ends,
  * so its plan does not move when the estimates are refreshed later. Van days
- * stay worked out from the dates. Changes the tour passed in.
+ * stay worked out from the dates. A figure with no estimate, on a tour that
+ * is not in dollars, is left empty. Changes the tour passed in.
  */
 export function keepEstimates(tour: Tour, data: Estimates = current): void {
   const rates = tourRates(tour, data);
   const kept = new Set(tour.estimated ?? []);
   for (const [key, read, write] of KEPT) {
     const r = read(rates);
-    if (r.typed) continue;
+    if (r.typed || r.noEstimate) continue; // with no estimate the figure stays empty, and missing
     write(tour, r.estimate);
     kept.add(key);
   }

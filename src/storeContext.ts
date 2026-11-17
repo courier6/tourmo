@@ -3,7 +3,7 @@
 // development; otherwise the screens and the provider stop matching.
 
 import { createContext } from 'react';
-import type { Place, Tour } from './core';
+import type { Place, Tour, TourChoices } from './core';
 
 export interface Store {
   tours: Tour[];
@@ -17,7 +17,7 @@ export interface Store {
   tour: Tour | undefined;
   openTour: (id: string) => void;
   /** Adds an empty tour at the first setup step, opens it and returns its id. */
-  createTour: (name: string, homeCity: string, homePlace?: Place) => string;
+  createTour: (name: string, homeCity: string, homePlace?: Place, choices?: TourChoices) => string;
   deleteTour: (id: string) => void;
   /** Change the open tour by editing the draft that is passed in. */
   update: (edit: (draft: Tour) => void) => void;
