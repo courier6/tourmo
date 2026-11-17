@@ -1,4 +1,4 @@
-// Rates setup is not in the mockups either. Changes save as they are typed.
+// Rates setup. Changes save as they are typed.
 // The sections are shared with the last step of setting up a new tour.
 
 import { useState } from 'react';

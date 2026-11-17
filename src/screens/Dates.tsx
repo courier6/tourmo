@@ -1,5 +1,5 @@
-// The Dates list and the date form are not in the mockups. These are plain
-// versions in the same ledger style so a tour can be built end to end.
+// The Dates list and the date form, in the same plain ledger style as the
+// other screens, so a tour can be built end to end.
 
 import { useState } from 'react';
 import { dateStatus, describeLeg, formatDay, formatMoney, formatNumber, legHome, legInto, lodgingFor, newId, routeMiles, STATUS_LABEL, tourRates, type DateKind, type Money, type Place, type TourDate } from '../core';

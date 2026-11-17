@@ -1,5 +1,5 @@
-// Acceptance tests from the handoff doc: parse tests, payout tests and the
-// "Spring run" worked example. Amounts in the tables are dollars.
+// Acceptance tests: parse tests, payout tests and the "Spring run" worked
+// example. Amounts in the tables are dollars.
 
 import { describe, expect, it } from 'vitest';
 import {

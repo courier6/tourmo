@@ -1,6 +1,6 @@
 // Every number the screens show comes from this module. It has no UI or
-// storage dependencies; calc.test.ts checks it against the handoff's worked
-// example.
+// storage dependencies; calc.test.ts checks it against the "Spring run"
+// worked example.
 
 import { addDays, cityName, daysBetween } from './dates';
 import { floorToDollar, formatMoney, formatNumber, formatPercent, percentOf, roundToDollar } from './money';
@@ -501,7 +501,7 @@ export const STATUS_LABEL: Record<DateStatus, string> = {
   unsettled: 'Not settled',
 };
 
-// ---------- safe to spend (from the whiteboard, not in the handoff doc) ----------
+// ---------- safe to spend ----------
 
 export interface SafeToSpend {
   /** Unplanned spending per day that still leaves the tour at break-even. */

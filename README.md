@@ -1,13 +1,12 @@
 # Tourmo
 
 A phone-first prototype for a self-managed band: plan a tour budget, then track
-real money against it night by night. Built from the handoff doc "Tour budget
-app — handoff for Claude Code".
+real money against it night by night.
 
-It opens on the list of tours. Three samples are there to start with: the
-handoff's **Spring run**, mid-tour with three of five shows settled, and two
-finished tours before it, **Fall run** and **Summer weekender**. All figures
-are invented. **Plan a new tour** sets one up in three steps.
+It opens on the list of tours. Three samples are there to start with:
+**Spring run**, mid-tour with three of five shows settled, and two finished
+tours before it, **Fall run** and **Summer weekender**. All figures are
+invented. **Plan a new tour** sets one up in three steps.
 
 ## Run it
 
@@ -32,6 +31,10 @@ with none, and the browser's "Add to Home Screen" installs it with its own
 icon. A new build reaches a phone the next time the app is opened after being
 fully closed. `npm run preview` serves `dist/` on this machine to try it.
 
+On GitHub, a push to `main` does this by itself:
+`.github/workflows/deploy.yml` runs the tests, builds, and publishes `dist/`
+to GitHub Pages.
+
 The hosted app has no lookup server (see "Not built yet"), so it plans with
 the figures saved in the build, straight-line drive estimates and whatever
 you type.
@@ -44,7 +47,7 @@ Other commands:
 
 | Command | What it does |
 | --- | --- |
-| `npm test` | Runs the calculation, parser and tour-setup tests (the handoff's worked example) |
+| `npm test` | Runs the calculation, parser and tour-setup tests, with Spring run as the worked example |
 | `npm run typecheck` | Type-checks the project |
 | `npm run build` | Builds the static app into `dist/`, with the service worker that keeps it on the device |
 | `npm run preview` | Serves `dist/` on port 4173 |
@@ -56,7 +59,7 @@ Other commands:
 
 ```
 src/core/        Pure TypeScript. No React, no storage. Reusable in a native app.
-  types.ts       The data model from the handoff
+  types.ts       The data model: a tour, its dates, offers and lines
   payout.ts      Show payout for each offer type, and the plain-words reading
   parser.ts      Offer shorthand: "$1K + 70% < $2250" to an Offer
   calc.ts        Plan amounts, tracking ("Now") amounts, differences, one date
@@ -108,14 +111,14 @@ src/screens/     Tours, the new-tour steps, Budget (Plan, Actuals and Split),
 - **One date**: enter box office, merch, lodging, fuel and food; the payout,
   commissions and merch costs are worked out; the summary updates as you type. Every entry is
   saved as it is typed, so there is no Save button to forget.
-- **Tours**, the new-tour steps, **Dates** and **Rates** were not in the
-  mockups. They are plain versions in the same style so a tour can be set up
-  end to end. Dates and Rates stay as tabs for changes after setup. Editing a
-  date has a tick for a night with no room to pay for.
+- **Dates** and **Rates**: the tabs for changes after setup. Dates adds,
+  edits and removes a date, and editing one has a tick for a night with no
+  room to pay for. Rates holds every figure the plan is worked out from.
 
-## Assumptions made
+## Rules it follows
 
-The handoff's open decisions, with the default taken for each:
+Where a deal or a figure can be read more than one way, this is the reading
+the app takes:
 
 - `<` in `$1K + 70% < $2250` means the percentage applies above 2,250.
 - The percentage is taken of gross unless the offer says net.
@@ -171,18 +174,23 @@ The handoff's open decisions, with the default taken for each:
   and so is food.
 - A tour set up before food and merch costs were planned keeps the plan it
   had: both are set to 0 on it, and Rates can clear either to take the
-  estimate. The samples do the same, so they still match the handoff.
+  estimate. The samples do the same, so their figures stay as the tests
+  expect.
 - Money put in to be paid back is not income and not a cost. It was spent on
   things the budget already counts, so it is paid back beside the split, not
   out of it. If the tour loses money, the loss comes out of what was put in.
 - The split is even, in whole dollars, between everyone on the road unless a
   number is set. A hired player's fee is a tour-wide expense, and they are
   left out of the number sharing.
-- The ledger look and the blue and orange pairing are kept.
-- Platform: a web app, since the goal was a prototype on a local server. The
+- **Safe to spend** on Actuals is the tracking net divided by the days left,
+  through the day the van goes back. It is one function, `safeToSpend` in
+  `calc.ts`, and easy to redefine or remove.
+- The look is a plain ledger. Blue marks a figure ahead of plan and orange
+  one behind.
+- Platform: a web app, so it runs on any phone with nothing to install. The
   core module has no framework dependency, so a native app could reuse it.
 
-These were added that the handoff does not specify:
+Parts of the data model worth knowing:
 
 - `Tour.people`, `Tour.perDiem`, `Tour.foodFinal` and `TourDate.food`: the
   headcount and the food line.
@@ -190,21 +198,16 @@ These were added that the handoff does not specify:
 - `Tour.putIn` and `Tour.splitBetween`: money to pay back, and how many share
   the net.
 - `Tour.drives`: the miles each drive is planned at, kept once setup ends.
-
-- `Tour.milesHome`: the leg home needs somewhere to live in the data.
+- `Tour.milesHome`: the miles of the leg home from the last date.
 - `Tour.demoToday`: pins "today" for the sample tour so it reads as mid-run.
   A real tour uses the device's date.
 - `Tour.setup`: the setup step a new tour has reached. It is removed when
   setup is finished. The dates are entered before the rates, so finishing
   fills each date's plan from the rates: merch on every show, and lodging on
   every night away from the home city.
-- **Safe to spend** on Actuals, from the earlier planning whiteboard: the
-  tracking net divided by the days left (through the day the van goes back).
-  It is one function, `safeToSpend` in `calc.ts`, and easy to redefine or remove.
 
 ## Not built yet
 
-- A hosted copy. The build is ready for any static host; none is set up.
 - Other currencies, kilometres and litres, for touring outside the United
   States. Every figure is in dollars, miles and gallons.
 - What is agreed on settlement night beyond the payout: a deposit already
@@ -225,8 +228,8 @@ These were added that the handoff does not specify:
   their drives are worked out, but they use the U.S. average gas price and
   the standard lodging rate.
 - Towns of under 1,000 people in the city list.
-- Sharing a tour live between devices, and everything the handoff lists as
-  out of scope. A backup file is the way to pass one on.
+- Sharing a tour live between devices. A backup file is the way to pass one
+  on.
 
 ## Data
 
