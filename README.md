@@ -98,8 +98,11 @@ src/screens/     Tours, the new-tour steps, Budget (Plan, Actuals and Split),
   Coming up and Past, each with its net. Tap one to open it. **Backup** saves
   every tour to a file and loads one back.
 - **Plan a new tour**: three steps. Name the tour (with its currency, its
-  units and its home city), add the dates, set the rates. The tour is saved from the first step, so setup can be
-  left and continued from the Tours list. Finishing opens the budget.
+  units and its home city), add the dates, set the rates. A date already
+  added can be changed or removed there, and the rates step can be skipped:
+  the plan then starts on the estimates, and the rates are set later under
+  Rates. The tour is saved from the first step, so setup can be left and
+  continued from the Tours list. Finishing opens the budget.
 - **Budget > Plan**: projected net at guaranteed minimums, every line with how
   it was worked out, "Add other income" (tour support from a label, say) and
   "Add an expense" (a hired player's fee, insurance). Tap Show guarantees to
@@ -253,8 +256,6 @@ Parts of the data model worth knowing:
   by headcount.
 - Opening a tour by its own address. The Budget, Dates and Rates tabs show
   whichever tour was opened last from the Tours list.
-- Changing a date during setup. It can be removed and added again, or edited
-  under Dates once setup is finished.
 - Several fuel fill-ups per date on screen (the data model holds a list; the
   screen has one field).
 - A lookup server anywhere but this machine. It runs inside `npm run dev`
