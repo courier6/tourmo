@@ -1,6 +1,7 @@
 // Setting up a new tour in three steps: name it, add the dates, set the
 // rates. The tour is created at the end of step 1 and saved as it is filled
-// in, so setup can be left and picked up again from the tour list.
+// in, so setup can be left and picked up again from the tour list. The rates
+// step can be skipped: setup then ends at the dates.
 
 import { useRef, useState } from 'react';
 import { carryOver, CURRENCIES, CURRENCY_OPTIONS, currencyOf, describeLeg, finishSetup, formatDay, formatDistance, hasUsFigures, legHome, legInto, listed, missingFigures, newId, routeMiles, UNIT_WORDS, UNITS_OPTIONS, unitsOf, unknownLegs, type Currency, type DateKind, type Place, type TourDate, type Units } from '../core';
@@ -61,7 +62,7 @@ export function NameStep() {
       <Steps step={1} />
       <header className="screen-head">
         <h1 className="title">Name the tour</h1>
-        <p className="note">Three steps: a name, the dates, then the rates. It is saved as you go, so you can stop and pick it up later.</p>
+        <p className="note">Three steps: a name, the dates, then the rates, which can wait until later. It is saved as you go, so you can stop and pick it up later.</p>
       </header>
       <form
         onSubmit={(e) => {
@@ -123,6 +124,8 @@ export function DatesStep() {
   // Drives are only worked out between cities of the list, which covers the United States and Canada.
   const list = hasUsFigures(tour);
   const last = tour.dates.at(-1);
+  // The figures this tour has no estimate for, which a plan made without the rates step counts as 0.
+  const missing = missingFigures(tour);
 
   const [date, setDate] = useState(last ? nextDay(last.date) : '');
   const [city, setCity] = useState('');
@@ -181,9 +184,18 @@ export function DatesStep() {
     cityInput.current?.focus();
   };
 
-  const next = () => {
+  /**
+   * Leaves the step: on to the rates, or straight out of setup. Ending setup
+   * here needs nothing from the rates step, since every rate left empty is
+   * estimated, or counted as 0 and said so on the budget.
+   */
+  const leave = (finish: boolean) => {
     if (halfEntered) return setBlocked(true);
     if (complete) save();
+    if (finish) {
+      update(finishSetup);
+      return go('/budget/plan');
+    }
     update((t) => {
       t.setup = 'rates';
     });
@@ -304,9 +316,16 @@ export function DatesStep() {
           {city.trim()} has no date yet. Give it a date, or clear the city, before going on.
         </p>
       )}
-      <button className="btn" type="button" onClick={next}>
+      <button className="btn" type="button" onClick={() => leave(false)}>
         Next: set the rates
       </button>
+      <button className="btn quiet" type="button" onClick={() => leave(true)}>
+        Skip the rates for now
+      </button>
+      <p className="note" style={{ marginTop: 8 }}>
+        The rates start on estimates, or on the figures of your last tour, and can be changed any time under Rates.
+        {missing.length > 0 && ` The plan counts ${listed(missing)} as 0 until you type ${missing.length === 1 ? 'it' : 'them'} there.`}
+      </p>
       {tour.dates.length === 0 && !complete && (
         <p className="note" style={{ marginTop: 8 }}>
           No dates yet? You can go on and add them later under Dates.
