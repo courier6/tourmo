@@ -1,7 +1,7 @@
 // Tours are saved on the device (localStorage), so the app works with no
 // signal. No accounts and no sync: one device, as the handoff's default says.
 
-import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { blankTour, carryOver, isTour, keepDrives, legs, localToday, newId, SAMPLE_TOUR_IDS, seedTours, tourPhase, type Place, type Tour } from './core';
 import { figuresFrom, onLookup, refreshFigures, wantRoad } from './lookups';
 import { Ctx, type Store } from './storeContext';
@@ -142,7 +142,32 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Stored>(loaded.data);
 
   const [unsaved, setUnsaved] = useState(false);
-  useEffect(() => setUnsaved(!save(data)), [data]);
+  const held = useRef(data);
+  /** Tours taken from another tab, which are on the device already and must not be written back. */
+  const received = useRef<Stored | undefined>(undefined);
+  useEffect(() => {
+    held.current = data;
+    if (received.current === data) return;
+    setUnsaved(!save(data));
+  }, [data]);
+
+  // Each tab holds its own copy and writes all of it, so a tab left open would
+  // write its old tours over what another tab has saved since. When another
+  // tab saves, its tours replace the ones held here. The tour open in this tab
+  // stays open, since which tour is open belongs to the tab.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== KEY || e.newValue === null) return;
+      const result = read(e.newValue);
+      if (!result?.complete) return;
+      const mine = held.current.activeTourId;
+      const next = { ...withDrives(result.data), activeTourId: result.data.tours.some((t) => t.id === mine) ? mine : '' };
+      received.current = next;
+      setData(next);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   // Figures looked up after the page opened (gas, lodging, road miles) change
   // what the screens work out, so each one redraws them.
