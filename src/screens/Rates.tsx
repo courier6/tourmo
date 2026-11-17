@@ -2,7 +2,7 @@
 // The sections are shared with the last step of setting up a new tour.
 
 import { useState } from 'react';
-import { DEFAULT_PEOPLE, findLine, foodPlan, formatMoney, formatNumber, fuelPlan, legHome, newId, peopleOn, routeMiles, tourDays, tourRates, type Commission, type EstimatedRate, type Money, type Rate, type Tour } from '../core';
+import { DEFAULT_PEOPLE, findLine, foodPlan, formatMoney, formatNumber, formatPercent, fuelPlan, legHome, newId, peopleOn, routeMiles, tourDays, tourRates, type Commission, type EstimatedRate, type Money, type Rate, type Tour } from '../core';
 import { Amount, Back, Check, MoneyField, NumberField, SelectField, TextField } from '../components';
 import { go } from '../router';
 import { useTour, useTours } from '../store';
@@ -230,7 +230,7 @@ export function FuelSection({ planning = false }: { planning?: boolean }) {
 export function DefaultsSection({ planning = false }: { planning?: boolean }) {
   const { tour, update } = useTour();
   const setRate = useSetRate();
-  const { merchPerShow, lodgingPerNight, rooms } = tourRates(tour);
+  const { merchPerShow, merchCost, lodgingPerNight, rooms } = tourRates(tour);
   return (
     <section className="section" aria-labelledby="r-defaults">
       <div className="section-head">
@@ -238,7 +238,16 @@ export function DefaultsSection({ planning = false }: { planning?: boolean }) {
           {planning ? 'Merch and lodging' : 'Defaults for new dates'}
         </h2>
       </div>
-      <MoneyField label="Merch per show" value={tour.merchPerShowDefault} placeholder={asDollars(merchPerShow.estimate)} onChange={(v) => update((t) => (t.merchPerShowDefault = v))} />
+      <div className="grid-2">
+        <MoneyField label="Merch per show" value={tour.merchPerShowDefault} placeholder={asDollars(merchPerShow.estimate)} onChange={(v) => update((t) => (t.merchPerShowDefault = v))} />
+        <NumberField
+          label="What merch costs you"
+          suffix="%"
+          value={tour.merchCostRate === undefined ? undefined : Math.round(tour.merchCostRate * 10000) / 100}
+          placeholder={String(Math.round(merchCost.estimate * 10000) / 100)}
+          onChange={(v) => setRate('merchCost', (t) => (t.merchCostRate = v === undefined ? undefined : v / 100))}
+        />
+      </div>
       <div className="grid-2">
         <NumberField
           label="Rooms a night"
@@ -257,6 +266,7 @@ export function DefaultsSection({ planning = false }: { planning?: boolean }) {
       <Notes
         lines={[
           merchPerShow.typed ? '' : `Merch: ${merchPerShow.basis}. Type what a show usually sells.`,
+          rateNote('Merch costs', merchCost, formatPercent, ' Type 0 to plan merch costs as an expense of their own.'),
           tour.lodgingRooms === undefined ? `Rooms: one for every two people, so ${rooms} for ${peopleOn(tour)}.` : '',
           rateNote('Lodging', lodgingPerNight, formatMoney) || `Lodging: your figure, so the ${rooms === 1 ? 'room' : 'rooms'} count is not used.`,
           planning

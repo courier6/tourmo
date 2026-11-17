@@ -86,6 +86,9 @@ export const DEFAULT_PEOPLE = 4;
 /** Dollars for one person's food for one day, until the band sets its own per diem. */
 export const DEFAULT_PER_DIEM = 20;
 
+/** The share of merch sales planned as its cost, until the band sets its own. */
+export const DEFAULT_MERCH_COST = 0.4;
+
 /** Everyone who travels: the figure behind the food plan and the rooms. */
 export const peopleOn = (tour: Tour): number => tour.people ?? DEFAULT_PEOPLE;
 
@@ -224,6 +227,8 @@ export interface TourRates {
   perDiem: Rate; // cents
   /** Everyone who travels. */
   people: number;
+  /** The share of merch sales that is its cost: 0.40 = 40%. */
+  merchCost: Rate;
 }
 
 export function tourRates(tour: Tour, data: Estimates = current): TourRates {
@@ -257,6 +262,7 @@ export function tourRates(tour: Tour, data: Estimates = current): TourRates {
     rooms: roomsFor(tour),
     perDiem: rate(tour.perDiem, 'perDiem', dollars(DEFAULT_PER_DIEM), 'a common per diem on a van tour'),
     people: peopleOn(tour),
+    merchCost: rate(tour.merchCostRate, 'merchCost', DEFAULT_MERCH_COST, 'about what the goods and card fees take of a sale; add any venue cut'),
   };
 }
 
@@ -266,6 +272,7 @@ const KEPT: [EstimatedRate, (r: TourRates) => Rate, (tour: Tour, value: number) 
   ['gasPrice', (r) => r.gasPrice, (t, v) => (t.fuel.pricePerGallon = v)],
   ['lodgingPerNight', (r) => r.lodgingPerNight, (t, v) => (t.lodgingPerNightDefault = v)],
   ['perDiem', (r) => r.perDiem, (t, v) => (t.perDiem = v)],
+  ['merchCost', (r) => r.merchCost, (t, v) => (t.merchCostRate = v)],
 ];
 
 /**

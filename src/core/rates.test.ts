@@ -9,6 +9,8 @@ import {
   budget,
   carryOver,
   currentEstimates,
+  dateAgainstPlan,
+  dateMerchCost,
   dollars,
   ESTIMATES,
   finishSetup,
@@ -206,7 +208,8 @@ describe('the plan from estimates', () => {
     expect(t.fuel.mpg).toBe(17);
     expect(t.vehicle.days).toBeUndefined(); // days stay worked out from the dates
     expect(t.perDiem).toBe($(20));
-    expect([...(t.estimated ?? [])].sort()).toEqual(['gasPrice', 'lodgingPerNight', 'perDiem', 'vanDailyRate']);
+    expect(t.merchCostRate).toBe(0.4);
+    expect([...(t.estimated ?? [])].sort()).toEqual(['gasPrice', 'lodgingPerNight', 'merchCost', 'perDiem', 'vanDailyRate']);
 
     const later: Estimates = { ...data, gas: { ...data.gas, us: 6, regions: {}, states: {} }, van: { ...data.van, dailyRate: 400 } };
     const rates = tourRates(t, later);
@@ -308,6 +311,44 @@ describe('people and food', () => {
   });
 });
 
+describe('merch costs', () => {
+  const costLine = (t: Tour) => budget(t).expenses.find((l) => l.kind === 'merchCost');
+  const selling = (): Tour => {
+    const t = run();
+    t.merchPerShowDefault = $(300);
+    finishSetup(t);
+    return t;
+  };
+
+  it('are a share of what merch sells, estimated at 40% until the band sets its own', () => {
+    const t = selling();
+    expect(costLine(t)).toMatchObject({ label: 'Merch costs, 40%', plan: $(360), now: $(360), how: '40% (estimate) of $900 merch sales' });
+    t.merchCostRate = 0.25;
+    t.estimated = t.estimated?.filter((k) => k !== 'merchCost');
+    expect(costLine(t)).toMatchObject({ label: 'Merch costs, 25%', plan: $(225), how: '25% of $900 merch sales' });
+  });
+
+  it('follow what was really sold', () => {
+    const t = selling();
+    t.dates[0].merch.actual = $(500);
+    expect(costLine(t)).toMatchObject({ plan: $(360), now: $(440), progress: '40% of $1,100' });
+    expect(dateMerchCost(t, t.dates[0])).toMatchObject({ plan: $(120), actual: $(200) });
+    expect(dateMerchCost(t, t.dates[1])).toMatchObject({ plan: $(120), actual: undefined });
+    // $200 more sold, less the $80 more it cost.
+    expect(dateAgainstPlan(t, t.dates[0])).toMatchObject({ vsPlan: $(120), hasActuals: true });
+  });
+
+  it('have no line when the share is 0 or the tour plans no merch', () => {
+    const t = selling();
+    t.merchCostRate = 0;
+    expect(costLine(t)).toBeUndefined();
+    expect(dateMerchCost(t, t.dates[0])).toBeUndefined();
+    const none = run();
+    finishSetup(none);
+    expect(costLine(none)).toBeUndefined();
+  });
+});
+
 describe('fresher figures', () => {
   afterEach(resetFigures);
 
@@ -365,6 +406,7 @@ describe('starting from the last tour', () => {
     last.lodgingRooms = 3;
     last.people = 5;
     last.perDiem = $(25);
+    last.merchCostRate = 0.3;
     last.dates[1].merch.actual = $(260);
     last.dates[2].merch.actual = $(331);
     keepEstimates(last, data); // gas, mileage and lodging were estimates
@@ -387,6 +429,7 @@ describe('starting from the last tour', () => {
       lodgingRooms: 3,
       people: 5,
       perDiem: $(25),
+      merchCostRate: 0.3,
     });
 
     const next = blankTour('t9', 'Summer run', 'Dallas, TX', undefined, carried);

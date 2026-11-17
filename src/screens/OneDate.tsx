@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   dateAgainstPlan,
   dateCommissions,
+  dateMerchCost,
   expenseDiff,
   explainPayout,
   foodPlan,
@@ -102,6 +103,7 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
   const paid = showActual(date);
   const result = dateAgainstPlan(tour, date);
   const commissions = dateCommissions(tour, date);
+  const merchCost = dateMerchCost(tour, date);
   const fuelLeft = fuelPlan(tour) - fuelSpent(tour);
   const drive = fuelForDrive(tour, date);
   const foodLeft = foodPlan(tour) - foodSpent(tour);
@@ -268,6 +270,20 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
             <div className="actual">{c.actual === undefined ? <NoPlan /> : <Amount value={c.actual} />}</div>
           </div>
         ))}
+
+        {merchCost && (
+          <div className="pa-row">
+            <div className="name">
+              <span className="label">{merchCost.label}</span>
+              <span className="note">Worked out from the merch sold</span>
+              {merchCost.actual !== undefined && <VsPlan diff={expenseDiff(merchCost.plan, merchCost.actual)} />}
+            </div>
+            <div className="plan">
+              <Amount value={merchCost.plan} />
+            </div>
+            <div className="actual">{merchCost.actual === undefined ? <NoPlan /> : <Amount value={merchCost.actual} />}</div>
+          </div>
+        )}
 
         {extrasOut.map((l) => (
           <div className="pa-row" key={l.id}>

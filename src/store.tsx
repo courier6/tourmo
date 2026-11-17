@@ -12,7 +12,7 @@ const KEY = 'tour-money/v1';
 /** Saved data that could not be read is copied here before anything replaces it. */
 export const UNREADABLE_KEY = 'tour-money/unreadable';
 
-const VERSION = 4;
+const VERSION = 5;
 
 interface Stored {
   version: typeof VERSION;
@@ -66,6 +66,15 @@ function fromVersion3(data: { tours: Tour[]; activeTourId: string }): { tours: T
   return { tours, activeTourId: data.activeTourId };
 }
 
+/**
+ * Version 5 plans a share of merch sales as its cost. As with food, a tour
+ * set up before then keeps the plan it had: a share of 0.
+ */
+function fromVersion4(data: { tours: Tour[]; activeTourId: string }): { tours: Tour[]; activeTourId: string } {
+  const tours = data.tours.map((tour) => (tour.setup || tour.merchCostRate !== undefined ? tour : { ...tour, merchCostRate: 0 }));
+  return { tours, activeTourId: data.activeTourId };
+}
+
 interface Loaded {
   data: Stored;
   /** True when some saved data could not be read and was copied to UNREADABLE_KEY. */
@@ -81,7 +90,7 @@ interface Loaded {
 export function readSaved(text: string): { data: Stored; complete: boolean } | undefined {
   try {
     const saved = JSON.parse(text) as { version?: unknown; tours?: unknown; activeTourId?: unknown } | null;
-    if (!saved || !Array.isArray(saved.tours) || ![1, 2, 3, VERSION].includes(saved.version as number)) return undefined;
+    if (!saved || !Array.isArray(saved.tours) || ![1, 2, 3, 4, VERSION].includes(saved.version as number)) return undefined;
     const tours = saved.tours.filter(isTour);
     for (const tour of tours) tour.dates.sort((a, b) => a.date.localeCompare(b.date));
     const activeTourId = typeof saved.activeTourId === 'string' ? saved.activeTourId : '';
@@ -89,6 +98,7 @@ export function readSaved(text: string): { data: Stored; complete: boolean } | u
     if (saved.version === 1) read = fromVersion1(read);
     if ((saved.version as number) <= 2) read = fromVersion2(read);
     if ((saved.version as number) <= 3) read = fromVersion3(read);
+    if ((saved.version as number) <= 4) read = fromVersion4(read);
     return { data: { version: VERSION, ...read }, complete: tours.length === saved.tours.length };
   } catch {
     return undefined;

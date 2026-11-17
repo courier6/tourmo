@@ -27,7 +27,7 @@ export interface KeptDrive {
 }
 
 /** The outside figures a tour can hold as estimates rather than as the band's own. */
-export type EstimatedRate = 'vanDailyRate' | 'mpg' | 'gasPrice' | 'lodgingPerNight' | 'perDiem';
+export type EstimatedRate = 'vanDailyRate' | 'mpg' | 'gasPrice' | 'lodgingPerNight' | 'perDiem' | 'merchCost';
 
 export interface Tour {
   id: string;
@@ -42,6 +42,7 @@ export interface Tour {
   perDiem?: Money; // added: food for one person for one day
   foodFinal?: boolean; // added: food spending is finished, so what was spent is the figure
   merchPerShowDefault?: Money;
+  merchCostRate?: number; // added: the share of merch sales that goes on the goods, fees and cuts. 0.40 = 40%
   lodgingPerNightDefault?: Money;
   lodgingRooms?: number; // added: rooms a night, behind the lodging estimate. Empty = one for every two people
   estimated?: EstimatedRate[]; // added: rates that hold an estimate kept from setup

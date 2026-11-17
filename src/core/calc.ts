@@ -95,9 +95,21 @@ function commissionOnDate(c: Commission, date: TourDate): { plan: Money; now: Mo
   };
 }
 
+// ---------- merch costs ----------
+
+/**
+ * What a date's merch costs the band: a share of what it sells, covering the
+ * goods, card fees and any venue cut. It follows the sales, as a commission
+ * follows the payout, and is rounded date by date for the same reason.
+ */
+function merchCostOnDate(rate: number, date: TourDate): { plan: Money; now: Money } {
+  if (date.kind !== 'show') return { plan: 0, now: 0 };
+  return { plan: percentOf(rate, date.merch.plan), now: percentOf(rate, track(date.merch.plan, date.merch.actual)) };
+}
+
 // ---------- the budget: one list of lines, each with plan and now ----------
 
-export type LineKind = 'shows' | 'merch' | 'additional' | 'commission' | 'vehicle' | 'fuel' | 'lodging' | 'food' | 'extra' | 'dateExtras';
+export type LineKind = 'shows' | 'merch' | 'additional' | 'commission' | 'merchCost' | 'vehicle' | 'fuel' | 'lodging' | 'food' | 'extra' | 'dateExtras';
 
 export interface BudgetLine {
   id: string;
@@ -205,6 +217,25 @@ export function budget(tour: Tour): Budget {
     };
   });
 
+  // A tour that plans no merch cost, or sells no merch, has no line for it.
+  const costRate = rates.merchCost.value;
+  const costs = shows.map((d) => merchCostOnDate(costRate, d));
+  const merchCost: BudgetLine[] =
+    costRate > 0 && (planMerch > 0 || nowMerch > 0)
+      ? [
+          {
+            id: 'merchCost',
+            kind: 'merchCost',
+            label: `Merch costs, ${formatPercent(costRate)}`,
+            direction: 'out',
+            plan: sum(costs.map((x) => x.plan)),
+            now: sum(costs.map((x) => x.now)),
+            how: `${formatPercent(costRate)}${rates.merchCost.estimated ? ' (estimate)' : ''} of ${formatMoney(planMerch)} merch sales`,
+            progress: `${formatPercent(costRate)} of ${formatMoney(nowMerch)}`,
+          },
+        ]
+      : [];
+
   const v = tour.vehicle;
   const planVan = roundToDollar(rates.vanDailyRate.value * rates.vanDays.value);
   const vehicle: BudgetLine = {
@@ -303,7 +334,7 @@ export function budget(tour: Tour): Budget {
       ]
     : [];
 
-  const expenses = [...commissions, vehicle, fuel, lodging, ...food, ...tourOut, ...dateExtras];
+  const expenses = [...commissions, ...merchCost, vehicle, fuel, lodging, ...food, ...tourOut, ...dateExtras];
 
   // Totals are sums of the rounded lines, so the screen always adds up.
   const totals = (pick: (l: BudgetLine) => Money): Totals => {
@@ -374,6 +405,14 @@ export function dateCommissions(tour: Tour, date: TourDate): DateCommission[] {
   });
 }
 
+/** A date's merch cost, worked out from what it sold. Undefined when the tour plans none. */
+export function dateMerchCost(tour: Tour, date: TourDate): DateCommission | undefined {
+  const rate = tourRates(tour).merchCost.value;
+  if (date.kind !== 'show' || rate <= 0) return undefined;
+  const { plan, now } = merchCostOnDate(rate, date);
+  return { id: 'merchCost', label: `Merch costs, ${formatPercent(rate)}`, plan, actual: date.merch.actual === undefined ? undefined : now };
+}
+
 export interface Cause {
   label: string;
   direction: 'in' | 'out';
@@ -392,7 +431,7 @@ export interface DateResult {
 
 /**
  * One date against plan: the change in the date's revenue, minus the change
- * in its lodging, extras and commissions. Only lines with an actual count.
+ * in its lodging, extras, commissions and merch costs. Only lines with an actual count.
  */
 export function dateAgainstPlan(tour: Tour, date: TourDate): DateResult {
   const causes: Cause[] = [];
@@ -415,6 +454,11 @@ export function dateAgainstPlan(tour: Tour, date: TourDate): DateResult {
   if (comms.some((c) => c.actual !== undefined)) {
     add('Commissions', 'out', sum(comms.map((c) => c.plan)), sum(comms.map((c) => c.actual ?? c.plan)));
     entered -= 1; // commissions follow the payout; they are not an entry of their own
+  }
+  const cost = dateMerchCost(tour, date);
+  if (cost?.actual !== undefined) {
+    add('Merch costs', 'out', cost.plan, cost.actual);
+    entered -= 1; // they follow the merch sold; they are not an entry of their own
   }
   add('Lodging', 'out', date.lodging.plan, date.lodging.actual);
   for (const l of date.lines.filter((x) => x.direction === 'out')) add(l.label, 'out', l.plan, l.actual);

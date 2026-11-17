@@ -27,9 +27,9 @@ const text = (version: number, tours: unknown[], activeTourId = '') => JSON.stri
 
 describe('saved tours', () => {
   it('are read back as they were saved', () => {
-    const result = readSaved(text(4, [own()], 't1'));
+    const result = readSaved(text(5, [own()], 't1'));
     expect(result?.complete).toBe(true);
-    expect(result?.data).toMatchObject({ version: 4, activeTourId: 't1' });
+    expect(result?.data).toMatchObject({ version: 5, activeTourId: 't1' });
     expect(result?.data.tours.map((t) => t.id)).toEqual(['t1']);
   });
 
@@ -51,14 +51,14 @@ describe('saved tours', () => {
   it('are refused whole when the text is not tours this version knows', () => {
     expect(readSaved('not json')).toBeUndefined();
     expect(readSaved('null')).toBeUndefined();
-    expect(readSaved(text(5, [own()]))).toBeUndefined();
+    expect(readSaved(text(6, [own()]))).toBeUndefined();
     expect(readSaved(JSON.stringify({ version: 3, tours: 'none' }))).toBeUndefined();
   });
 
   it('from version 1 gain the samples added since', () => {
     const [spring] = seedTours().filter((t) => t.id === SAMPLE_TOUR_IDS.at(-1));
     const result = readSaved(text(1, [spring, own()]));
-    expect(result?.data.version).toBe(4);
+    expect(result?.data.version).toBe(5);
     expect(result?.data.tours.map((t) => t.id).sort()).toEqual([...SAMPLE_TOUR_IDS, 't1'].sort());
   });
 
@@ -88,6 +88,20 @@ describe('tours saved before food was planned', () => {
 
   it('keep a per diem already set', () => {
     expect(readSaved(text(4, [{ ...own(), perDiem: 2500 }]))?.data.tours[0].perDiem).toBe(2500);
+  });
+});
+
+describe('tours saved before merch costs were planned', () => {
+  it('keep the plan they had: no share of merch counted as its cost', () => {
+    const tour = { ...own(), perDiem: 2500, merchPerShowDefault: 30000 };
+    tour.dates.forEach((d) => (d.merch.plan = 30000));
+    const read = readSaved(text(4, [tour]))?.data.tours[0];
+    expect(read).toMatchObject({ perDiem: 2500, merchCostRate: 0 });
+    expect(budget(read!).expenses.some((l) => l.kind === 'merchCost')).toBe(false);
+  });
+
+  it('keep a share already set', () => {
+    expect(readSaved(text(5, [{ ...own(), merchCostRate: 0.3 }]))?.data.tours[0].merchCostRate).toBe(0.3);
   });
 });
 

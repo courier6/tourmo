@@ -18,6 +18,7 @@ export interface CarryOver {
   lodgingRooms?: number;
   people?: number;
   perDiem?: Money;
+  merchCostRate?: number;
 }
 
 /**
@@ -46,6 +47,7 @@ export function carryOver(tours: Tour[]): CarryOver | undefined {
     lodgingRooms: latest.lodgingRooms,
     people: latest.people,
     perDiem: own('perDiem', latest.perDiem),
+    merchCostRate: own('merchCost', latest.merchCostRate),
   };
 }
 
@@ -64,6 +66,7 @@ export function blankTour(id: string, name: string, homeCity = '', homePlace?: P
     lodgingRooms: carried?.lodgingRooms,
     people: carried?.people,
     perDiem: carried?.perDiem,
+    merchCostRate: carried?.merchCostRate,
     ratesFrom: carried?.from,
     dates: [],
     lines: [],
@@ -170,6 +173,7 @@ export function isTour(v: unknown): v is Tour {
     isOptionalMoney(v.people) &&
     isOptionalMoney(v.perDiem) &&
     isOptionalMoney(v.merchPerShowDefault) &&
+    isOptionalMoney(v.merchCostRate) &&
     isOptionalMoney(v.lodgingPerNightDefault) &&
     isOptionalMoney(v.lodgingRooms) &&
     isOptionalMoney(v.milesHome) &&

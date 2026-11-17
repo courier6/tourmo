@@ -204,7 +204,7 @@ function Plan({ b }: { b: BudgetData }) {
 // ---------- Actuals ----------
 
 function LedgerRow({ line }: { line: BudgetLine }) {
-  const to = line.kind === 'extra' ? lineLink(line) : line.kind === 'vehicle' || line.kind === 'fuel' || line.kind === 'food' ? '/rates' : undefined;
+  const to = line.kind === 'extra' ? lineLink(line) : line.kind === 'vehicle' || line.kind === 'fuel' || line.kind === 'food' || line.kind === 'merchCost' ? '/rates' : undefined;
   return (
     <tr>
       <th scope="row">
