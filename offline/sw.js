@@ -6,8 +6,12 @@ const VERSION = '__VERSION__';
 const FILES = ['__FILES__'];
 const CACHE = 'tourmo-' + VERSION;
 
+// Each file is asked for past the browser's own store of recent answers. A
+// host may let a page be reused for some minutes, and a copy made from one
+// would hold the page of the build it replaces.
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES)));
+  const fresh = FILES.map((file) => new Request(file, { cache: 'reload' }));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(fresh)));
 });
 
 // A new build waits until every window of the old one is closed, so a screen
