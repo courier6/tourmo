@@ -24,13 +24,31 @@ miles. Without it, or with no signal, the app still works: it uses the last
 figures it was given and estimates drives from the map distance. To try it on a phone on the same Wi-Fi, run
 `npm run dev:phone` and open the "Network" address it prints.
 
+## Put it on a phone
+
+`npm run build` writes a static site into `dist/`. Put that folder on any
+static host and open it on the phone. After one visit with a signal it opens
+with none, and the browser's "Add to Home Screen" installs it with its own
+icon. A new build reaches a phone the next time the app is opened after being
+fully closed. `npm run preview` serves `dist/` on this machine to try it.
+
+The hosted app has no lookup server (see "Not built yet"), so it plans with
+the figures saved in the build, straight-line drive estimates and whatever
+you type.
+
+Tours are kept in the browser on one device. **Backup** on the Tours screen
+saves all of them to a file and loads a file back; that is how to keep a
+copy, move to a new phone or hand a tour to a bandmate.
+
 Other commands:
 
 | Command | What it does |
 | --- | --- |
 | `npm test` | Runs the calculation, parser and tour-setup tests (the handoff's worked example) |
 | `npm run typecheck` | Type-checks the project |
-| `npm run build` | Builds the static app into `dist/` |
+| `npm run build` | Builds the static app into `dist/`, with the service worker that keeps it on the device |
+| `npm run preview` | Serves `dist/` on port 4173 |
+| `node scripts/build-icons.mjs` | Redraws the app icon in `public/` |
 | `npm run estimates` | Looks up this week's gas prices and this year's lodging rates, and saves them as the figures the app falls back on |
 | `npm run lookups` | Runs the lookup server by itself on port 8787 (`npm run dev` already includes it) |
 
@@ -52,6 +70,9 @@ src/core/        Pure TypeScript. No React, no storage. Reusable in a native app
   route.test.ts  City lookup and drive estimates
   rates.test.ts  Regional gas and lodging estimates, van days, starting from the last tour
 src/lookups.ts   Asks the lookup server for fresher figures and road miles, and keeps them
+offline/         sw.js: the service worker that keeps the built app on the device.
+                 plugin.mjs: writes it into the build with the list of files to keep
+public/          The web manifest and the icons, copied into the build as they are
 server/          The lookup server: sources.mjs (where figures come from),
                  lookups.mjs (what it answers and keeps), index.mjs (running it alone)
 src/data/        cities.json: 19,623 US and Canadian places, built by scripts/build-cities.mjs
@@ -59,31 +80,38 @@ src/data/        cities.json: 19,623 US and Canadian places, built by scripts/bu
 src/CityField.tsx  The city field with suggestions, and the miles field beside it
 src/store.tsx    Saves tours on the device (localStorage). No accounts, no sync
 src/theme.css    Every colour, font and size. The style is not signed off yet
-src/screens/     Tours, the new-tour steps, Budget (Plan and Actuals), Offers,
-                 One date, Dates, Rates
+src/screens/     Tours, the new-tour steps, Budget (Plan, Actuals and Split),
+                 Offers, One date, Dates, Rates
 ```
 
 ## Screens
 
 - **Tours**: every tour on the device, grouped as Setting up, On the road,
-  Coming up and Past, each with its net. Tap one to open it.
+  Coming up and Past, each with its net. Tap one to open it. **Backup** saves
+  every tour to a file and loads one back.
 - **Plan a new tour**: three steps. Name the tour (and its home city), add the
   dates, set the rates. The tour is saved from the first step, so setup can be
   left and continued from the Tours list. Finishing opens the budget.
 - **Budget > Plan**: projected net at guaranteed minimums, every line with how
-  it was worked out, "Add an expense". Tap Show guarantees to reach the offers.
+  it was worked out, "Add other income" (tour support from a label, say) and
+  "Add an expense" (a hired player's fee, insurance). Tap Show guarantees to
+  reach the offers.
 - **Offer entry**: type the offer as the promoter sent it; the "Read as" panel
   shows the reading and lets you correct it. When part of the text was not
   understood (a date in front, two percentages, "225 tickets"), the panel says
   what was left out and asks you to check, instead of guessing silently.
 - **Budget > Actuals**: where the tour is tracking, the Plan / Now / vs plan
   table, and the By date list.
-- **One date**: enter box office, merch, lodging and fuel; the payout and
-  commissions are worked out; the summary updates as you type. Every entry is
+- **Budget > Split**: what there is to share out on the figures so far, an
+  even share for each person, and the money a member or a label put in, which
+  is paid back first.
+- **One date**: enter box office, merch, lodging, fuel and food; the payout,
+  commissions and merch costs are worked out; the summary updates as you type. Every entry is
   saved as it is typed, so there is no Save button to forget.
 - **Tours**, the new-tour steps, **Dates** and **Rates** were not in the
   mockups. They are plain versions in the same style so a tour can be set up
-  end to end. Dates and Rates stay as tabs for changes after setup.
+  end to end. Dates and Rates stay as tabs for changes after setup. Editing a
+  date has a tick for a night with no room to pay for.
 
 ## Assumptions made
 
@@ -95,7 +123,8 @@ The handoff's open decisions, with the default taken for each:
 - A commission is rounded to the dollar on each show and then added up, so the
   By date differences always sum to the tour's difference.
 - Commissions apply to show income only (changeable per commission in Rates).
-- One device, no accounts. Tours are stored as a list.
+- One device, no accounts. Tours are stored as a list. A backup file is the
+  only copy anywhere else.
 - Cities are picked from a bundled list as you type, so it works with no
   signal. A city that is not in the list can still be typed; its drives then
   need the miles typed too, and the budget says how many drives are not counted.
@@ -115,7 +144,8 @@ The handoff's open decisions, with the default taken for each:
     states in between are not looked at), the drives are averaged by miles,
     and the result is rounded up to 5 cents.
   - **Lodging**: the federal (GSA) lodging rate for each city slept in, for
-    that month, times the rooms (2 unless changed), rounded up to $5. Each
+    that month, times the rooms (one for every two people unless changed),
+    rounded up to $5. Each
     night is planned for its own city, so a night in New York costs more than
     a night in Tulsa; the rates step shows the average. Cities without their
     own rate use the standard one. A lodging figure you type applies to every
@@ -124,19 +154,42 @@ The handoff's open decisions, with the default taken for each:
     market guide (August 2026). No public source gives van rates by region,
     so these two do not vary by place.
   - **Merch**: left at $0 until a figure is set, so the plan does not count on it.
+  - **People**: 4 on the road until a number is set. Everyone who travels
+    counts, hired players and crew too.
+  - **Food**: $20 a person a day, from the first date to the last. It is
+    bought day by day against that one figure, as fuel is.
+  - **Merch costs**: 40% of sales, for the goods and card fees. A venue's cut
+    is yours to add to the share.
   Estimates lean high on purpose. Typing a figure replaces the estimate; 0 is
-  a real figure (no van rental, say).
+  a real figure. Choosing "Our own" for the van sets its daily rate to 0.
 - When setup ends, the estimates in use are written into the tour and marked
   as estimates, so the plan does not move when the figures are refreshed
   later. Van days stay worked out from the dates.
-- A new tour starts from your latest tour's commissions, van rate, mileage,
-  merch (what the shows really sold) and lodging, where those were your own
-  figures. Fuel is one tour-wide budget.
+- A new tour starts from your latest tour's headcount, commissions, van rate,
+  mileage, per diem, merch (what the shows really sold), merch costs and
+  lodging, where those were your own figures. Fuel is one tour-wide budget,
+  and so is food.
+- A tour set up before food and merch costs were planned keeps the plan it
+  had: both are set to 0 on it, and Rates can clear either to take the
+  estimate. The samples do the same, so they still match the handoff.
+- Money put in to be paid back is not income and not a cost. It was spent on
+  things the budget already counts, so it is paid back beside the split, not
+  out of it. If the tour loses money, the loss comes out of what was put in.
+- The split is even, in whole dollars, between everyone on the road unless a
+  number is set. A hired player's fee is a tour-wide expense, and they are
+  left out of the number sharing.
 - The ledger look and the blue and orange pairing are kept.
 - Platform: a web app, since the goal was a prototype on a local server. The
   core module has no framework dependency, so a native app could reuse it.
 
-Four things were added that the handoff does not specify:
+These were added that the handoff does not specify:
+
+- `Tour.people`, `Tour.perDiem`, `Tour.foodFinal` and `TourDate.food`: the
+  headcount and the food line.
+- `Tour.merchCostRate`: the share of merch sales planned as its cost.
+- `Tour.putIn` and `Tour.splitBetween`: money to pay back, and how many share
+  the net.
+- `Tour.drives`: the miles each drive is planned at, kept once setup ends.
 
 - `Tour.milesHome`: the leg home needs somewhere to live in the data.
 - `Tour.demoToday`: pins "today" for the sample tour so it reads as mid-run.
@@ -151,23 +204,29 @@ Four things were added that the handoff does not specify:
 
 ## Not built yet
 
-- Installing to the home screen and working with the server switched off
-  (a service worker). Data is already stored on the device.
+- A hosted copy. The build is ready for any static host; none is set up.
+- Other currencies, kilometres and litres, for touring outside the United
+  States. Every figure is in dollars, miles and gallons.
+- What is agreed on settlement night beyond the payout: a deposit already
+  paid and who holds it, a venue's merch cut for that night, tax withheld.
+  These can be typed as expenses on the date.
+- Named members, uneven shares and who paid for what. The split is even and
+  by headcount.
 - Opening a tour by its own address. The Budget, Dates and Rates tabs show
   whichever tour was opened last from the Tours list.
 - Changing a date during setup. It can be removed and added again, or edited
   under Dates once setup is finished.
 - Several fuel fill-ups per date on screen (the data model holds a list; the
   screen has one field).
-- A lookup server anywhere but this machine. It runs inside `npm run dev`;
-  putting the app online would need it hosted, with keys of its own.
+- A lookup server anywhere but this machine. It runs inside `npm run dev`
+  and `npm run preview`; a hosted app would need it hosted too, with keys of
+  its own.
 - Gas and lodging figures for Canada. Canadian cities are in the list and
   their drives are worked out, but they use the U.S. average gas price and
   the standard lodging rate.
-- A food or per-diem line. The budget has none; the GSA publishes meal rates
-  by city that could feed one.
 - Towns of under 1,000 people in the city list.
-- Export or sharing, and everything the handoff lists as out of scope.
+- Sharing a tour live between devices, and everything the handoff lists as
+  out of scope. A backup file is the way to pass one on.
 
 ## Data
 
