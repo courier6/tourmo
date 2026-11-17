@@ -6,6 +6,8 @@ import { blankTour, carryOver, isTour, keepDrives, legs, localToday, newId, SAMP
 import { figuresFrom, onLookup, refreshFigures, wantRoad } from './lookups';
 import { Ctx, type Store } from './storeContext';
 
+// The storage keys keep the project's first name. Renaming them would leave
+// tours already saved in a browser where the app no longer looks.
 const KEY = 'tour-money/v1';
 /** Saved data that could not be read is copied here before anything replaces it. */
 export const UNREADABLE_KEY = 'tour-money/unreadable';

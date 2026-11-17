@@ -1,4 +1,4 @@
-# Tour budget
+# Tourmo
 
 A phone-first prototype for a self-managed band: plan a tour budget, then track
 real money against it night by night. Built from the handoff doc "Tour budget
