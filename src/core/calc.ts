@@ -1,11 +1,11 @@
 // Every number the screens show comes from this module. It has no UI or
-// storage dependencies; calc.test.ts checks it against the handoff's worked
-// example.
+// storage dependencies; calc.test.ts checks it against the "Spring run"
+// worked example.
 
 import { addDays, cityName, daysBetween } from './dates';
 import { floorToDollar, formatMoney, formatNumber, formatPercent, percentOf, roundToDollar } from './money';
 import { guaranteedMinimum, payout } from './payout';
-import { tourRates } from './rates';
+import { peopleOn, tourDays, tourRates } from './rates';
 import { legInto, routeMiles, unknownLegs } from './route';
 import type { Commission, ExtraLine, Money, Tour, TourDate } from './types';
 
@@ -29,6 +29,16 @@ export function showActual(date: TourDate): Money | undefined {
   // A flat deal needs no box office figure: once settled it paid the guarantee.
   if (date.offer.type === 'flat' && date.settled) return date.offer.guarantee;
   return undefined;
+}
+
+/**
+ * True for a show ticked settled whose payout is still not known: it has no
+ * offer, or its deal needs the box office and none was entered, and no amount
+ * paid was typed in its place. Such a show goes on counting at its plan, so
+ * the screens say that the figure is missing.
+ */
+export function settledWithoutPayout(date: TourDate): boolean {
+  return date.kind === 'show' && date.settled && showActual(date) === undefined;
 }
 
 export const fuelOnDate = (date: TourDate): Money => sum(date.fuelFillUps);
@@ -58,6 +68,16 @@ export function fuelForDrive(tour: Tour, date: TourDate): { miles: number; cost:
   return { miles, cost: mpg.value > 0 ? roundToDollar((miles / mpg.value) * gasPrice.value) : 0 };
 }
 
+// ---------- food ----------
+
+/** Everyone who travels, fed every day from the first date to the last. */
+export function foodPlan(tour: Tour): Money {
+  const { perDiem, people } = tourRates(tour);
+  return roundToDollar(perDiem.value * people * tourDays(tour));
+}
+
+export const foodSpent = (tour: Tour): Money => sum(tour.dates.map((d) => d.food ?? 0));
+
 // ---------- commissions ----------
 
 function commissionBase(c: Commission, show: Money, merch: Money): Money {
@@ -75,9 +95,21 @@ function commissionOnDate(c: Commission, date: TourDate): { plan: Money; now: Mo
   };
 }
 
+// ---------- merch costs ----------
+
+/**
+ * What a date's merch costs the band: a share of what it sells, covering the
+ * goods, card fees and any venue cut. It follows the sales, as a commission
+ * follows the payout, and is rounded date by date for the same reason.
+ */
+function merchCostOnDate(rate: number, date: TourDate): { plan: Money; now: Money } {
+  if (date.kind !== 'show') return { plan: 0, now: 0 };
+  return { plan: percentOf(rate, date.merch.plan), now: percentOf(rate, track(date.merch.plan, date.merch.actual)) };
+}
+
 // ---------- the budget: one list of lines, each with plan and now ----------
 
-export type LineKind = 'shows' | 'merch' | 'additional' | 'commission' | 'vehicle' | 'fuel' | 'lodging' | 'extra' | 'dateExtras';
+export type LineKind = 'shows' | 'merch' | 'additional' | 'commission' | 'merchCost' | 'vehicle' | 'fuel' | 'lodging' | 'food' | 'extra' | 'dateExtras';
 
 export interface BudgetLine {
   id: string;
@@ -123,14 +155,35 @@ export function budget(tour: Tour): Budget {
   const merchIn = shows.filter((d) => d.merch.actual !== undefined).length;
   const merchUniform = shows.length > 0 && shows.every((d) => d.merch.plan === rates.merchPerShow.value);
 
+  // Income added on dates is one line. Tour-wide income, such as tour support
+  // from a label, is a line of its own each, so it can be opened and changed.
   const dateIn = tour.dates.flatMap((d) => d.lines.filter((l) => l.direction === 'in').map((l) => ({ line: l, date: d })));
-  const tourIn = tour.lines.filter((l) => l.direction === 'in');
-  const planAdditional = sum(dateIn.map((x) => x.line.plan)) + sum(tourIn.map((l) => l.plan));
-  const nowAdditional =
-    sum(dateIn.map((x) => track(x.line.plan, x.line.actual))) + sum(tourIn.map((l) => trackTourWide(l.plan, l.actual, l.final)));
-  const additionalCount = dateIn.length + tourIn.length;
-  const additionalEntered = dateIn.filter((x) => x.line.actual !== undefined).length + tourIn.filter((l) => l.actual !== undefined).length;
-  const additionalNames = [...dateIn.map((x) => `${x.line.label}, ${cityName(x.date.city)}`), ...tourIn.map((l) => l.label)];
+  const additional: BudgetLine[] = dateIn.length
+    ? [
+        {
+          id: 'additional',
+          kind: 'additional',
+          label: 'Additional revenue',
+          direction: 'in',
+          plan: sum(dateIn.map((x) => x.line.plan)),
+          now: sum(dateIn.map((x) => track(x.line.plan, x.line.actual))),
+          how: dateIn.map((x) => `${x.line.label}, ${cityName(x.date.city)}`).join('; '),
+          progress: `${dateIn.filter((x) => x.line.actual !== undefined).length} of ${dateIn.length} in`,
+        },
+      ]
+    : [];
+  const tourIn: BudgetLine[] = tour.lines
+    .filter((l) => l.direction === 'in')
+    .map((l) => ({
+      id: `line:${l.id}`,
+      kind: 'extra',
+      label: l.label,
+      direction: 'in',
+      plan: l.plan,
+      now: trackTourWide(l.plan, l.actual, l.final),
+      how: 'Added by you',
+      progress: l.actual === undefined ? 'Not received yet' : `${formatMoney(l.actual)} received${l.final ? ', final' : ' so far'}`,
+    }));
 
   const revenue: BudgetLine[] = [
     {
@@ -153,16 +206,8 @@ export function budget(tour: Tour): Budget {
       how: merchUniform ? `${formatMoney(rates.merchPerShow.value)} × ${plural(shows.length, 'show')}` : plural(shows.length, 'show'),
       progress: `${merchIn} of ${plural(shows.length, 'show')} in`,
     },
-    {
-      id: 'additional',
-      kind: 'additional',
-      label: 'Additional revenue',
-      direction: 'in',
-      plan: planAdditional,
-      now: nowAdditional,
-      how: additionalNames.length ? additionalNames.join('; ') : 'Nothing added',
-      progress: additionalCount ? `${additionalEntered} of ${additionalCount} in` : 'Nothing added',
-    },
+    ...additional,
+    ...tourIn,
   ];
 
   // Expenses
@@ -185,18 +230,43 @@ export function budget(tour: Tour): Budget {
     };
   });
 
+  // A tour that plans no merch cost, or sells no merch, has no line for it.
+  const costRate = rates.merchCost.value;
+  const costs = shows.map((d) => merchCostOnDate(costRate, d));
+  const merchCost: BudgetLine[] =
+    costRate > 0 && (planMerch > 0 || nowMerch > 0)
+      ? [
+          {
+            id: 'merchCost',
+            kind: 'merchCost',
+            label: `Merch costs, ${formatPercent(costRate)}`,
+            direction: 'out',
+            plan: sum(costs.map((x) => x.plan)),
+            now: sum(costs.map((x) => x.now)),
+            how: `${formatPercent(costRate)}${rates.merchCost.estimated ? ' (estimate)' : ''} of ${formatMoney(planMerch)} merch sales`,
+            progress: `${formatPercent(costRate)} of ${formatMoney(nowMerch)}`,
+          },
+        ]
+      : [];
+
   const v = tour.vehicle;
   const planVan = roundToDollar(rates.vanDailyRate.value * rates.vanDays.value);
-  const vehicle: BudgetLine = {
-    id: 'vehicle',
-    kind: 'vehicle',
-    label: 'Van rental',
-    direction: 'out',
-    plan: planVan,
-    now: trackTourWide(planVan, v.actual, v.final),
-    how: `${formatMoney(rates.vanDailyRate.value)}${rates.vanDailyRate.estimated ? ' (estimate)' : ''} × ${plural(rates.vanDays.value, 'day')}`,
-    progress: v.actual === undefined ? 'Not paid yet' : `${formatMoney(v.actual)} paid${v.final ? ', final' : ' so far'}`,
-  };
+  // A van that is not rented, with nothing paid for one, has no rental line.
+  const vehicle: BudgetLine[] =
+    planVan === 0 && v.actual === undefined
+      ? []
+      : [
+          {
+            id: 'vehicle',
+            kind: 'vehicle',
+            label: 'Van rental',
+            direction: 'out',
+            plan: planVan,
+            now: trackTourWide(planVan, v.actual, v.final),
+            how: `${formatMoney(rates.vanDailyRate.value)}${rates.vanDailyRate.estimated ? ' (estimate)' : ''} × ${plural(rates.vanDays.value, 'day')}`,
+            progress: v.actual === undefined ? 'Not paid yet' : `${formatMoney(v.actual)} paid${v.final ? ', final' : ' so far'}`,
+          },
+        ];
 
   const planFuel = fuelPlan(tour);
   const spent = fuelSpent(tour);
@@ -233,6 +303,27 @@ export function budget(tour: Tour): Budget {
     progress: `${nightsIn} of ${plural(nights.length, 'night')} in`,
   };
 
+  // Food is bought day by day against one figure for the tour, as fuel is.
+  // A tour planned with no food figure and nothing spent has no food line.
+  const planFood = foodPlan(tour);
+  const eaten = foodSpent(tour);
+  const days = tourDays(tour);
+  const food: BudgetLine[] =
+    planFood > 0 || eaten > 0
+      ? [
+          {
+            id: 'food',
+            kind: 'food',
+            label: 'Food',
+            direction: 'out',
+            plan: planFood,
+            now: trackTourWide(planFood, eaten, tour.foodFinal),
+            how: `${formatMoney(rates.perDiem.value)}${rates.perDiem.estimated ? ' (estimate)' : ''} × ${rates.people} ${rates.people === 1 ? 'person' : 'people'} × ${plural(days, 'day')}`,
+            progress: eaten > planFood ? `${formatMoney(eaten)} spent, ${formatMoney(eaten - planFood)} over` : `${formatMoney(eaten)} spent, ${formatMoney(planFood - eaten)} left`,
+          },
+        ]
+      : [];
+
   const tourOut: BudgetLine[] = tour.lines
     .filter((l) => l.direction === 'out')
     .map((l) => ({
@@ -262,7 +353,7 @@ export function budget(tour: Tour): Budget {
       ]
     : [];
 
-  const expenses = [...commissions, vehicle, fuel, lodging, ...tourOut, ...dateExtras];
+  const expenses = [...commissions, ...merchCost, ...vehicle, fuel, lodging, ...food, ...tourOut, ...dateExtras];
 
   // Totals are sums of the rounded lines, so the screen always adds up.
   const totals = (pick: (l: BudgetLine) => Money): Totals => {
@@ -333,6 +424,14 @@ export function dateCommissions(tour: Tour, date: TourDate): DateCommission[] {
   });
 }
 
+/** A date's merch cost, worked out from what it sold. Undefined when the tour plans none. */
+export function dateMerchCost(tour: Tour, date: TourDate): DateCommission | undefined {
+  const rate = tourRates(tour).merchCost.value;
+  if (date.kind !== 'show' || rate <= 0) return undefined;
+  const { plan, now } = merchCostOnDate(rate, date);
+  return { id: 'merchCost', label: `Merch costs, ${formatPercent(rate)}`, plan, actual: date.merch.actual === undefined ? undefined : now };
+}
+
 export interface Cause {
   label: string;
   direction: 'in' | 'out';
@@ -342,7 +441,7 @@ export interface Cause {
 }
 
 export interface DateResult {
-  /** Positive = ahead of plan. Fuel is left out: it has no per-date plan. */
+  /** Positive = ahead of plan. Fuel and food are left out: they have no per-date plan. */
   vsPlan: Money;
   causes: Cause[];
   /** False until any actual is entered for the date. */
@@ -351,7 +450,7 @@ export interface DateResult {
 
 /**
  * One date against plan: the change in the date's revenue, minus the change
- * in its lodging, extras and commissions. Only lines with an actual count.
+ * in its lodging, extras, commissions and merch costs. Only lines with an actual count.
  */
 export function dateAgainstPlan(tour: Tour, date: TourDate): DateResult {
   const causes: Cause[] = [];
@@ -375,11 +474,16 @@ export function dateAgainstPlan(tour: Tour, date: TourDate): DateResult {
     add('Commissions', 'out', sum(comms.map((c) => c.plan)), sum(comms.map((c) => c.actual ?? c.plan)));
     entered -= 1; // commissions follow the payout; they are not an entry of their own
   }
+  const cost = dateMerchCost(tour, date);
+  if (cost?.actual !== undefined) {
+    add('Merch costs', 'out', cost.plan, cost.actual);
+    entered -= 1; // they follow the merch sold; they are not an entry of their own
+  }
   add('Lodging', 'out', date.lodging.plan, date.lodging.actual);
   for (const l of date.lines.filter((x) => x.direction === 'out')) add(l.label, 'out', l.plan, l.actual);
 
   const vsPlan = sum(causes.map((c) => (c.direction === 'in' ? c.change : -c.change)));
-  return { vsPlan, causes, hasActuals: entered > 0 || date.fuelFillUps.length > 0 };
+  return { vsPlan, causes, hasActuals: entered > 0 || date.fuelFillUps.length > 0 || date.food !== undefined };
 }
 
 export type DateStatus = 'settled' | 'tonight' | 'upcoming' | 'unsettled';
@@ -397,7 +501,7 @@ export const STATUS_LABEL: Record<DateStatus, string> = {
   unsettled: 'Not settled',
 };
 
-// ---------- safe to spend (from the whiteboard, not in the handoff doc) ----------
+// ---------- safe to spend ----------
 
 export interface SafeToSpend {
   /** Unplanned spending per day that still leaves the tour at break-even. */
@@ -426,6 +530,52 @@ export function safeToSpend(tour: Tour, today: string): SafeToSpend | undefined 
   const net = budget(tour).now.net;
   if (net <= 0) return undefined;
   return { perDay: floorToDollar(net / daysLeft), daysLeft };
+}
+
+// ---------- the split ----------
+
+export interface Split {
+  /** The tour's net on the figures so far. */
+  net: Money;
+  /** Everything that was put in and is owed back. */
+  putIn: Money;
+  /** How much of it the tour can pay back: all of it, unless the tour lost money. */
+  paidBack: Money;
+  /** What there is to share out: the net, or nothing when the tour lost money. */
+  toShare: Money;
+  /** How many people share it. */
+  ways: number;
+  /** One share, in whole dollars. */
+  each: Money;
+  /** The odd dollars an even split leaves over. */
+  left: Money;
+  /** Shows not settled yet, whose payouts can still move the figures. */
+  open: number;
+}
+
+/**
+ * Who gets what when the tour is over. Money put in was spent on costs the
+ * budget already counts, so paying it back does not come out of the net: the
+ * net is what is shared. When the tour loses money the loss comes out of what
+ * was put in, and there is nothing to share.
+ */
+export function splitFor(tour: Tour): Split {
+  const b = budget(tour);
+  const net = b.now.net;
+  const putIn = sum((tour.putIn ?? []).map((p) => p.amount));
+  const ways = Math.max(1, Math.round(tour.splitBetween ?? peopleOn(tour)));
+  const toShare = Math.max(0, net);
+  const each = floorToDollar(toShare / ways);
+  return {
+    net,
+    putIn,
+    paidBack: Math.max(0, putIn + Math.min(0, net)),
+    toShare,
+    ways,
+    each,
+    left: toShare - each * ways,
+    open: b.showCount - b.settledCount,
+  };
 }
 
 // ---------- small helpers the screens share ----------

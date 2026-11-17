@@ -55,6 +55,18 @@ select {
   padding: 20px var(--gutter) 32px;
 }
 
+/* Shown on every screen while saves are being refused. It stays in view. */
+.unsaved {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 10px var(--gutter);
+  background: var(--bad);
+  color: var(--surface);
+  font-size: var(--size-note);
+  font-weight: 600;
+}
+
 .money {
   font-family: var(--font-money);
   font-weight: 500;
@@ -109,11 +121,12 @@ select {
   font-size: var(--size-heading);
 }
 
-/* ---------- Plan / Actuals switch ---------- */
+/* ---------- Plan / Actuals / Split switch ---------- */
 
 .switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   margin: 0 0 16px;
   border: 1px solid var(--ink);
   border-radius: var(--radius);
@@ -128,6 +141,10 @@ select {
   font-weight: 600;
   text-decoration: none;
   background: var(--surface);
+}
+
+.switch a + a {
+  border-left: 1px solid var(--ink);
 }
 
 .switch a[aria-current='page'] {

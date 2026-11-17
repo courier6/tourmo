@@ -9,9 +9,11 @@ import {
   describeLeg,
   dollars,
   drivingMiles,
+  finishSetup,
   forgetRoads,
   formatDrive,
   fuelForDrive,
+  keepDrives,
   knownRoad,
   loadRoads,
   rememberRoad,
@@ -265,5 +267,73 @@ describe('road miles that have been looked up', () => {
     expect(formatDrive(42)).toBe('40 min');
     expect(formatDrive(2)).toBe('5 min');
     expect(formatDrive(1438)).toBe('24 h');
+  });
+});
+
+describe('the miles a tour is planned at', () => {
+  afterEach(forgetRoads);
+
+  const tour = (): Tour => {
+    const t = blankTour('t1', 'Summer run', 'Dallas, TX', at('Dallas, TX'));
+    t.fuel = { mpg: 16, pricePerGallon: dollars(4) };
+    t.dates = [day('b', '2027-06-05', 'Tulsa, OK'), day('c', '2027-06-06', 'Wichita, KS')];
+    return t;
+  };
+  const tulsa = { miles: 256, minutes: 289 };
+
+  it('stay put once setup ends, when a road lookup arrives later', () => {
+    const t = tour();
+    finishSetup(t);
+    const miles = routeMiles(t);
+    const fuel = fuelPlan(t);
+    rememberRoad(at('Dallas, TX'), at('Tulsa, OK'), tulsa);
+    expect(routeMiles(t)).toBe(miles);
+    expect(fuelPlan(t)).toBe(fuel);
+    // The drive is still planned at its estimate; the road miles are offered beside it.
+    expect(legInto(t, t.dates[0])).toMatchObject({ miles: drivingMiles(at('Dallas, TX'), at('Tulsa, OK')), source: 'estimated', estimate: 256, exact: true });
+  });
+
+  it('stay put when the looked-up roads are gone, as on another device', () => {
+    const t = tour();
+    rememberRoad(at('Dallas, TX'), at('Tulsa, OK'), tulsa);
+    finishSetup(t);
+    const miles = routeMiles(t);
+    forgetRoads();
+    expect(routeMiles(t)).toBe(miles);
+    expect(legInto(t, t.dates[0])).toMatchObject({ miles: 256, source: 'road' });
+  });
+
+  it('take road miles in place of an estimate once, when asked to sharpen', () => {
+    const t = tour();
+    finishSetup(t);
+    rememberRoad(at('Dallas, TX'), at('Tulsa, OK'), tulsa);
+    expect(keepDrives(t)).toBe(false); // without sharpening, nothing moves
+    expect(keepDrives(t, true)).toBe(true);
+    expect(legInto(t, t.dates[0])).toMatchObject({ miles: 256, source: 'road' });
+    // Road miles, once held, do not change again.
+    rememberRoad(at('Dallas, TX'), at('Tulsa, OK'), { miles: 300, minutes: 320 });
+    expect(keepDrives(t, true)).toBe(false);
+    expect(legInto(t, t.dates[0]).miles).toBe(256);
+  });
+
+  it('follow a date whose city changes, and leave the other drives alone', () => {
+    const t = tour();
+    finishSetup(t);
+    const home = legHome(t).miles; // Wichita to Dallas
+    t.dates[0] = day('b', '2027-06-05', 'Oklahoma City, OK');
+    keepDrives(t);
+    expect(legInto(t, t.dates[0]).miles).toBe(drivingMiles(at('Dallas, TX'), at('Oklahoma City, OK')));
+    expect(legInto(t, t.dates[1]).miles).toBe(drivingMiles(at('Oklahoma City, OK'), at('Wichita, KS')));
+    expect(legHome(t).miles).toBe(home);
+    // Drives that are no longer on the route are dropped.
+    expect(Object.keys(t.drives ?? {})).toHaveLength(3);
+  });
+
+  it('never hold miles the band typed', () => {
+    const t = tour();
+    t.dates[0].milesFromPrevious = 260;
+    finishSetup(t);
+    expect(Object.keys(t.drives ?? {})).toHaveLength(2);
+    expect(legInto(t, t.dates[0])).toMatchObject({ miles: 260, source: 'typed' });
   });
 });

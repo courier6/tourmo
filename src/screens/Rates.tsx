@@ -1,8 +1,8 @@
-// Rates setup is not in the mockups either. Changes save as they are typed.
+// Rates setup. Changes save as they are typed.
 // The sections are shared with the last step of setting up a new tour.
 
 import { useState } from 'react';
-import { DEFAULT_ROOMS, findLine, formatMoney, formatNumber, fuelPlan, legHome, newId, routeMiles, tourRates, type Commission, type EstimatedRate, type Money, type Rate, type Tour } from '../core';
+import { DEFAULT_PEOPLE, findLine, foodPlan, formatMoney, formatNumber, formatPercent, fuelPlan, legHome, newId, peopleOn, routeMiles, tourDays, tourRates, type Commission, type EstimatedRate, type Money, type Rate, type Tour } from '../core';
 import { Amount, Back, Check, MoneyField, NumberField, SelectField, TextField } from '../components';
 import { go } from '../router';
 import { useTour, useTours } from '../store';
@@ -38,6 +38,61 @@ function useSetRate() {
       write(t);
       t.estimated = t.estimated?.filter((k) => k !== key);
     });
+}
+
+/** A kept lodging estimate is worked out from the rooms, so it is let go when they change. */
+function releaseLodgingEstimate(t: Tour) {
+  if (!t.estimated?.includes('lodgingPerNight')) return;
+  delete t.lodgingPerNightDefault;
+  t.estimated = t.estimated.filter((k) => k !== 'lodgingPerNight');
+}
+
+/** Who travels, and what feeding them comes to. The headcount also sets the rooms. */
+export function PeopleSection({ planning = false }: { planning?: boolean }) {
+  const { tour, update } = useTour();
+  const setRate = useSetRate();
+  const { perDiem, people } = tourRates(tour);
+  const days = tourDays(tour);
+  return (
+    <section className="section" aria-labelledby="r-people">
+      <div className="section-head">
+        <h2 className="heading" id="r-people">
+          People and food
+        </h2>
+        <Amount value={foodPlan(tour)} />
+      </div>
+      <div className="grid-2">
+        <NumberField
+          label="People on the road"
+          suffix="people"
+          value={tour.people}
+          placeholder={String(DEFAULT_PEOPLE)}
+          onChange={(v) =>
+            update((t) => {
+              t.people = v;
+              // The rooms follow the headcount unless the band set them.
+              if (t.lodgingRooms === undefined) releaseLodgingEstimate(t);
+            })
+          }
+        />
+        <MoneyField label="Food, each, a day" value={tour.perDiem} placeholder={asDollars(perDiem.estimate)} onChange={(v) => setRate('perDiem', (t) => (t.perDiem = v))} />
+      </div>
+      <Notes
+        lines={[
+          tour.people === undefined ? `People: ${DEFAULT_PEOPLE} until you say otherwise. Count everyone who travels, hired players and crew too.` : '',
+          rateNote('Food', perDiem, formatMoney, ' Type 0 to leave food out of the plan.'),
+          days ? `The food plan is ${people} ${people === 1 ? 'person' : 'people'} × ${days} ${days === 1 ? 'day' : 'days'} × the daily figure.` : 'The food plan is worked out once there are dates.',
+          planning ? '' : 'What is spent on food is entered on each date.',
+        ]}
+      />
+      {!planning && (
+        <>
+          <Check label="Food spending is finished" checked={!!tour.foodFinal} onChange={(v) => update((t) => (t.foodFinal = v))} />
+          <p className="note">Until this is ticked, food counts as the larger of the plan and what has been spent.</p>
+        </>
+      )}
+    </section>
+  );
 }
 
 export function CommissionsSection() {
@@ -109,6 +164,9 @@ export function VanSection({ planning = false }: { planning?: boolean }) {
   const { tour, update } = useTour();
   const setRate = useSetRate();
   const { vanDailyRate, vanDays } = tourRates(tour);
+  // A daily rate of 0 that the band set is a van that is not rented.
+  const own = tour.vehicle.dailyRate === 0 && !tour.estimated?.includes('vanDailyRate');
+  const paid = tour.vehicle.actual !== undefined;
   const daysNote = !vanDays.typed
     ? tour.dates.length
       ? `Days: worked out from the dates, ${vanDays.basis}.`
@@ -120,16 +178,38 @@ export function VanSection({ planning = false }: { planning?: boolean }) {
     <section className="section" aria-labelledby="r-van">
       <div className="section-head">
         <h2 className="heading" id="r-van">
-          Van rental
+          Van
         </h2>
         <Amount value={Math.round(vanDailyRate.value * vanDays.value)} />
       </div>
-      <div className="grid-2">
-        <MoneyField label="Daily rate" value={tour.vehicle.dailyRate} placeholder={asDollars(vanDailyRate.estimate)} onChange={(v) => setRate('vanDailyRate', (t) => (t.vehicle.dailyRate = v))} />
-        <NumberField label="Days" suffix="days" value={tour.vehicle.days} placeholder={String(vanDays.estimate)} onChange={(v) => update((t) => (t.vehicle.days = v))} />
-      </div>
-      <Notes lines={[rateNote('Daily rate', vanDailyRate, formatMoney, ' Type 0 if you are not renting.'), daysNote]} />
-      {!planning && (
+      <SelectField
+        label="The van is"
+        value={own ? 'own' : 'rented'}
+        onChange={(v) =>
+          setRate('vanDailyRate', (t) => {
+            if (v === 'own') t.vehicle.dailyRate = 0;
+            else delete t.vehicle.dailyRate;
+          })
+        }
+        options={[
+          ['rented', 'Rented'],
+          ['own', 'Our own'],
+        ]}
+      />
+      {own ? (
+        <p className="note" style={{ marginTop: 8 }}>
+          No rental is planned. Fuel is planned below. Repairs, insurance or wear can be added as an expense on the budget.
+        </p>
+      ) : (
+        <>
+          <div className="grid-2">
+            <MoneyField label="Daily rate" value={tour.vehicle.dailyRate} placeholder={asDollars(vanDailyRate.estimate)} onChange={(v) => setRate('vanDailyRate', (t) => (t.vehicle.dailyRate = v))} />
+            <NumberField label="Days" suffix="days" value={tour.vehicle.days} placeholder={String(vanDays.estimate)} onChange={(v) => update((t) => (t.vehicle.days = v))} />
+          </div>
+          <Notes lines={[rateNote('Daily rate', vanDailyRate, formatMoney, ' A quote with the waiver and tax in it is the better figure.'), daysNote]} />
+        </>
+      )}
+      {!planning && (!own || paid) && (
         <>
           <MoneyField label="Paid so far" value={tour.vehicle.actual} onChange={(v) => update((t) => (t.vehicle.actual = v))} note="Leave empty until something is paid." />
           <Check label="That is the final van bill" checked={!!tour.vehicle.final} onChange={(v) => update((t) => (t.vehicle.final = v))} />
@@ -175,7 +255,7 @@ export function FuelSection({ planning = false }: { planning?: boolean }) {
 export function DefaultsSection({ planning = false }: { planning?: boolean }) {
   const { tour, update } = useTour();
   const setRate = useSetRate();
-  const { merchPerShow, lodgingPerNight, rooms } = tourRates(tour);
+  const { merchPerShow, merchCost, lodgingPerNight, rooms } = tourRates(tour);
   return (
     <section className="section" aria-labelledby="r-defaults">
       <div className="section-head">
@@ -183,21 +263,26 @@ export function DefaultsSection({ planning = false }: { planning?: boolean }) {
           {planning ? 'Merch and lodging' : 'Defaults for new dates'}
         </h2>
       </div>
-      <MoneyField label="Merch per show" value={tour.merchPerShowDefault} placeholder={asDollars(merchPerShow.estimate)} onChange={(v) => update((t) => (t.merchPerShowDefault = v))} />
+      <div className="grid-2">
+        <MoneyField label="Merch per show" value={tour.merchPerShowDefault} placeholder={asDollars(merchPerShow.estimate)} onChange={(v) => update((t) => (t.merchPerShowDefault = v))} />
+        <NumberField
+          label="What merch costs you"
+          suffix="%"
+          value={tour.merchCostRate === undefined ? undefined : Math.round(tour.merchCostRate * 10000) / 100}
+          placeholder={String(Math.round(merchCost.estimate * 10000) / 100)}
+          onChange={(v) => setRate('merchCost', (t) => (t.merchCostRate = v === undefined ? undefined : v / 100))}
+        />
+      </div>
       <div className="grid-2">
         <NumberField
           label="Rooms a night"
           suffix="rooms"
           value={tour.lodgingRooms}
-          placeholder={String(DEFAULT_ROOMS)}
+          placeholder={String(Math.ceil(peopleOn(tour) / 2))}
           onChange={(v) =>
             update((t) => {
               t.lodgingRooms = v;
-              // The lodging estimate follows the rooms, so a kept one is let go.
-              if (t.estimated?.includes('lodgingPerNight')) {
-                delete t.lodgingPerNightDefault;
-                t.estimated = t.estimated.filter((k) => k !== 'lodgingPerNight');
-              }
+              releaseLodgingEstimate(t);
             })
           }
         />
@@ -206,6 +291,8 @@ export function DefaultsSection({ planning = false }: { planning?: boolean }) {
       <Notes
         lines={[
           merchPerShow.typed ? '' : `Merch: ${merchPerShow.basis}. Type what a show usually sells.`,
+          rateNote('Merch costs', merchCost, formatPercent, ' Type 0 to plan merch costs as an expense of their own.'),
+          tour.lodgingRooms === undefined ? `Rooms: one for every two people, so ${rooms} for ${peopleOn(tour)}.` : '',
           rateNote('Lodging', lodgingPerNight, formatMoney) || `Lodging: your figure, so the ${rooms === 1 ? 'room' : 'rooms'} count is not used.`,
           planning
             ? 'Merch is planned for every show, and lodging for every night away from the home city. Each date can be changed later under Dates.'
@@ -251,6 +338,7 @@ export function Rates() {
         <MilesField label="Miles home from the last date" value={tour.milesHome} onChange={(v) => update((t) => (t.milesHome = v))} leg={legHome(tour)} />
       </section>
 
+      <PeopleSection />
       <CommissionsSection />
       <VanSection />
       <FuelSection />
@@ -295,6 +383,7 @@ export function LineEdit({ lineId }: { lineId: string }) {
       </main>
     );
   }
+  const out = line.direction === 'out';
   const set = (change: (l: NonNullable<typeof line>) => void) =>
     update((t) => {
       const l = t.lines.find((x) => x.id === lineId);
@@ -306,16 +395,21 @@ export function LineEdit({ lineId }: { lineId: string }) {
     <main className="screen">
       <Back to="/budget/plan">Budget</Back>
       <header className="screen-head">
-        <h1 className="title">{line.label || 'Expense'}</h1>
+        <h1 className="title">{line.label || (out ? 'Expense' : 'Income')}</h1>
         <p className="note">
-          {line.direction === 'out' ? 'A tour-wide expense' : 'Tour-wide income'} {'·'} plan {formatMoney(line.plan)}. Changes save as you type.
+          {out ? 'A tour-wide expense' : 'Tour-wide income'} {'·'} plan {formatMoney(line.plan)}. Changes save as you type.
         </p>
       </header>
       <TextField label="Name" value={line.label} onChange={(v) => set((l) => (l.label = v))} />
       <MoneyField label="Planned amount" value={line.plan} onChange={setMoney('plan')} />
-      <MoneyField label="Paid so far" value={line.actual} onChange={setMoney('actual')} note="Leave empty until something is paid. Empty is not the same as 0." />
+      <MoneyField
+        label={out ? 'Paid so far' : 'Received so far'}
+        value={line.actual}
+        onChange={setMoney('actual')}
+        note={`Leave empty until something is ${out ? 'paid' : 'received'}. Empty is not the same as 0.`}
+      />
       <Check label="That is the final amount" checked={!!line.final} onChange={(v) => set((l) => (l.final = v))} />
-      <p className="note">Until this is ticked, the line counts as the larger of the plan and what has been paid.</p>
+      <p className="note">Until this is ticked, the line counts as the larger of the plan and what has been {out ? 'paid' : 'received'}.</p>
       <a className="btn" href="#/budget/actuals">
         Done
       </a>

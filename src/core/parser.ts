@@ -39,7 +39,16 @@ interface Found {
 const NUMBER = /(%\s*)?(\$\s*)?(\d+(?:\.\d+)?)(k\b|\s*grand\b)?(\s*(?:%|percent\b|pct\b))?/g;
 
 /** Words that can follow a figure in a deal. Anything else gets a second look. */
-const DEAL_WORDS = new Set('vs v versus against plus flat guarantee guaranteed of after over above net gross door and or split deal expenses costs the a'.split(' '));
+const DEAL_WORDS = new Set('vs v versus against plus flat guarantee guaranteed of after over above net gross nbor gbor door and or split deal expenses costs the a'.split(' '));
+
+/**
+ * Ways a promoter writes that the percentage is taken after deductions:
+ * "net", "NBOR" (net box office receipts), or "after expenses", "after costs"
+ * and "after the house nut" with no figure in between. "After $2,250" is a
+ * threshold instead, and is read as one.
+ */
+const NET_WORDS = /\b(?:net|nbor)\b|\bafter\s+(?:(?:the|all|house|show|venue|promoter)\s+)*(?:expenses|costs|nut)\b/;
+const GROSS_WORDS = /\b(?:gross|gbor)\b/;
 
 function findNumbers(text: string): Found[] {
   const found: Found[] = [];
@@ -77,8 +86,8 @@ export function parseOffer(raw: string): ParsedOffer {
     // "70/30" is a split, band's share first.
     .replace(/(?<![\d.\/])(\d{1,2})\s*\/\s*(\d{1,2})(?![\d.\/])/g, (whole, a, b) => (Number(a) + Number(b) === 100 ? `${a}%` : whole));
 
-  const basis: OfferBasis = /\bnet\b/.test(text) ? 'net' : 'gross';
-  const basisAssumed = !/\b(net|gross)\b/.test(text);
+  const basis: OfferBasis = NET_WORDS.test(text) ? 'net' : 'gross';
+  const basisAssumed = !NET_WORDS.test(text) && !GROSS_WORDS.test(text);
   const result: ParsedOffer = { raw, ok: false, basis, basisAssumed, missing: [], doubts: [] };
   const doubt = (words: string) => result.doubts.push(words);
 
