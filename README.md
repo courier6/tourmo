@@ -62,6 +62,7 @@ src/core/        Pure TypeScript. No React, no storage. Reusable in a native app
   calc.ts        Plan amounts, tracking ("Now") amounts, differences, one date
   rates.ts       Every rate of a tour: typed, worked out from the dates, or estimated by region
   route.ts       The drives of a tour: typed miles, or an estimate between two cities
+  units.ts       Miles and gallons or kilometres and litres: converting at the fields
   cities.ts      City lookup as you type
   tours.ts       A blank tour, the defaults applied when setup ends, past or upcoming
   seed.ts        The three sample tours
@@ -69,6 +70,9 @@ src/core/        Pure TypeScript. No React, no storage. Reusable in a native app
   tours.test.ts  The sample tours, a new tour and where a tour sits against today
   route.test.ts  City lookup and drive estimates
   rates.test.ts  Regional gas and lodging estimates, van days, starting from the last tour
+  parser.test.ts Offers written in euros or pounds
+  units.test.ts  A tour in kilometres and litres
+  abroad.test.ts A tour that is not in dollars: no estimates, typed figures
 src/lookups.ts   Asks the lookup server for fresher figures and road miles, and keeps them
 offline/         sw.js: the service worker that keeps the built app on the device.
                  plugin.mjs: writes it into the build with the list of files to keep
@@ -79,6 +83,7 @@ src/data/        cities.json: 19,623 US and Canadian places, built by scripts/bu
                  estimates.json: gas, lodging and van figures, refreshed by npm run estimates
 src/CityField.tsx  The city field with suggestions, and the miles field beside it
 src/store.tsx    Saves tours on the device (localStorage). No accounts, no sync
+src/currency.ts  Hands the open tour's currency to every amount and money field
 src/theme.css    Every colour, font and size. The style is not signed off yet
 src/screens/     Tours, the new-tour steps, Budget (Plan, Actuals and Split),
                  Offers, One date, Dates, Rates
@@ -89,8 +94,8 @@ src/screens/     Tours, the new-tour steps, Budget (Plan, Actuals and Split),
 - **Tours**: every tour on the device, grouped as Setting up, On the road,
   Coming up and Past, each with its net. Tap one to open it. **Backup** saves
   every tour to a file and loads one back.
-- **Plan a new tour**: three steps. Name the tour (and its home city), add the
-  dates, set the rates. The tour is saved from the first step, so setup can be
+- **Plan a new tour**: three steps. Name the tour (with its currency, its
+  units and its home city), add the dates, set the rates. The tour is saved from the first step, so setup can be
   left and continued from the Tours list. Finishing opens the budget.
 - **Budget > Plan**: projected net at guaranteed minimums, every line with how
   it was worked out, "Add other income" (tour support from a label, say) and
@@ -108,6 +113,8 @@ src/screens/     Tours, the new-tour steps, Budget (Plan, Actuals and Split),
 - **One date**: enter box office, merch, lodging, fuel and food; the payout,
   commissions and merch costs are worked out; the summary updates as you type. Every entry is
   saved as it is typed, so there is no Save button to forget.
+- **Rates** also holds the tour's currency (dollars, euros or pounds) and its
+  units (miles and gallons, or kilometres and litres).
 - **Tours**, the new-tour steps, **Dates** and **Rates** were not in the
   mockups. They are plain versions in the same style so a tour can be set up
   end to end. Dates and Rates stay as tabs for changes after setup. Editing a
@@ -178,6 +185,28 @@ The handoff's open decisions, with the default taken for each:
 - The split is even, in whole dollars, between everyone on the road unless a
   number is set. A hired player's fee is a tour-wide expense, and they are
   left out of the number sharing.
+- A tour is kept in one currency: US dollars, euros or pounds. It is a label.
+  Nothing is converted, there are no exchange rates, and changing it leaves
+  every figure at the same number. Amounts are written the same way in each,
+  symbol first: €1,280.
+- An offer is read in the tour's currency. "€1K vs 70%", "800 € flat" and
+  "1000 EUR" are all read, and "1.000" is one thousand, as promoters in
+  Europe write it. A figure marked with another currency is read as the same
+  number, and the "Read as" panel says that nothing was converted.
+- A tour is shown in miles and gallons, or in kilometres and litres with fuel
+  use in litres per 100 km. Distances, mileage and the fuel price are stored
+  in miles and gallons either way, so changing units moves no figure.
+- The gas, lodging and van estimates are United States figures, and the city
+  list covers the United States and Canada. A tour that is not in dollars is
+  given none of them: its van daily rate, fuel price and lodging are typed,
+  and until they are the plan counts them as 0 and says so. Its cities are
+  typed, not picked, and so are its drives. The mileage (15 mpg, shown as
+  15.7 L/100 km) and the per diem (20 a person a day) are rules of thumb and
+  are still offered; a diesel van in Europe uses nearer 10 L/100 km.
+- On such a tour the lodging figure is for the whole party for a night, and a
+  night still planned at it follows it when it is changed under Rates.
+- A new tour starts in the latest tour's currency and units. Money figures and
+  the van's mileage are brought over only from a tour in the same currency.
 - The ledger look and the blue and orange pairing are kept.
 - Platform: a web app, since the goal was a prototype on a local server. The
   core module has no framework dependency, so a native app could reuse it.
@@ -190,6 +219,8 @@ These were added that the handoff does not specify:
 - `Tour.putIn` and `Tour.splitBetween`: money to pay back, and how many share
   the net.
 - `Tour.drives`: the miles each drive is planned at, kept once setup ends.
+- `Tour.currency` and `Tour.units`: left out on a tour in dollars and miles,
+  so tours saved before there was a choice read as they did.
 
 - `Tour.milesHome`: the leg home needs somewhere to live in the data.
 - `Tour.demoToday`: pins "today" for the sample tour so it reads as mid-run.
@@ -205,8 +236,13 @@ These were added that the handoff does not specify:
 ## Not built yet
 
 - A hosted copy. The build is ready for any static host; none is set up.
-- Other currencies, kilometres and litres, for touring outside the United
-  States. Every figure is in dollars, miles and gallons.
+- Outside the United States: cities to pick from and drives worked out,
+  fuel and lodging figures for other countries, and currencies beyond
+  dollars, euros and pounds. Exchange rates, a currency per date, local
+  number formats ("1.280,50 €") and the United Kingdom's mix of miles and
+  litres are not built either.
+- A way to say where a dollar tour is. A tour kept in dollars is taken to be
+  in the United States and is given its estimates and city list.
 - What is agreed on settlement night beyond the payout: a deposit already
   paid and who holds it, a venue's merch cut for that night, tax withheld.
   These can be typed as expenses on the date.
