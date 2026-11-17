@@ -23,6 +23,8 @@ export interface Store {
   update: (edit: (draft: Tour) => void) => void;
   /** Puts the sample tours back as they first loaded. Other tours are kept. */
   restoreSamples: () => void;
+  /** Adds the tours of a backup file. A tour already held is replaced by the backup's copy. */
+  loadBackup: (tours: Tour[]) => void;
 }
 
 export const Ctx = createContext<Store | null>(null);

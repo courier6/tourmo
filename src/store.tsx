@@ -142,6 +142,22 @@ function save(data: Stored): boolean {
   }
 }
 
+/** What a backup file holds: every tour, as it is saved on the device, with none open. */
+export function backupOf(tours: Tour[]): string {
+  const data: Stored = { version: 3, tours, activeTourId: '' };
+  return JSON.stringify(data);
+}
+
+/**
+ * The tours of a backup laid over the ones held. A tour in both is replaced
+ * by the backup's copy; every other tour held is kept, so loading a backup
+ * never removes a tour.
+ */
+export function withBackup(held: Tour[], backup: Tour[]): Tour[] {
+  const incoming = new Set(backup.map((t) => t.id));
+  return [...held.filter((t) => !incoming.has(t.id)), ...backup];
+}
+
 /** Today for a tour. A sample tour can pin it so it reads as mid-run. */
 export const todayFor = (tour: Tour) => tour.demoToday ?? localToday();
 
@@ -225,6 +241,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
     setData((prev) => ({ ...prev, tours: [...seedTours(), ...prev.tours.filter((t) => !SAMPLE_TOUR_IDS.includes(t.id))] }));
   }, []);
 
+  const loadBackup = useCallback((tours: Tour[]) => {
+    setData((prev) => withDrives({ ...prev, tours: withBackup(prev.tours, structuredClone(tours)) }));
+  }, []);
+
   const value = useMemo<Store>(
     () => ({
       tours: data.tours,
@@ -237,9 +257,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
       deleteTour,
       update,
       restoreSamples,
+      loadBackup,
     }),
     // `lookups` is listed so that a new figure reaches every screen.
-    [data, loaded, unsaved, lookups, openTour, createTour, deleteTour, update, restoreSamples],
+    [data, loaded, unsaved, lookups, openTour, createTour, deleteTour, update, restoreSamples, loadBackup],
   );
 
   // Real road miles for every drive of the open tour that is still an estimate.

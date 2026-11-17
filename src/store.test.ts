@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { blankTour, SAMPLE_TOUR_IDS, seedTours, suggestedVanDays, type Tour, type TourDate } from './core';
-import { readSaved } from './store';
+import { backupOf, readSaved, withBackup } from './store';
 
 const day = (id: string, date: string, city: string): TourDate => ({
   id,
@@ -71,5 +71,26 @@ describe('saved tours', () => {
     expect(read?.fuel.mpg).toBeUndefined();
     // A tour past setup keeps a 0 it may have meant, such as no van rental.
     expect(read?.vehicle.dailyRate).toBe(0);
+  });
+});
+
+describe('a backup file', () => {
+  it('reads back as the tours it was saved from, with none open', () => {
+    const tours = [...seedTours(), own()];
+    const result = readSaved(backupOf(tours));
+    expect(result?.complete).toBe(true);
+    expect(result?.data.activeTourId).toBe('');
+    expect(result?.data.tours).toEqual(tours);
+  });
+
+  it('replaces a tour already held and adds the rest, removing nothing', () => {
+    const held = [own(), { ...own(), id: 't2', name: 'Winter run' }];
+    const backup = [{ ...own(), name: 'Summer run, from the file' }, { ...own(), id: 't3', name: 'Fall run' }];
+    const after = withBackup(held, backup);
+    expect(after.map((t) => [t.id, t.name]).sort()).toEqual([
+      ['t1', 'Summer run, from the file'],
+      ['t2', 'Winter run'],
+      ['t3', 'Fall run'],
+    ]);
   });
 });
