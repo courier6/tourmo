@@ -72,6 +72,10 @@ const fromParse = (p: ParsedOffer): Fields => ({
   basis: p.basis,
 });
 
+const FIELDS: (keyof Fields)[] = ['type', 'guarantee', 'percentage', 'threshold', 'basis'];
+/** The fields where a and b differ. */
+const differing = (a: Fields, b: Fields) => FIELDS.filter((k) => a[k] !== b[k]);
+
 const TYPES: [OfferType, string][] = [
   ['flat', 'Flat guarantee'],
   ['versus', 'Versus: guarantee or a percentage'],
@@ -87,6 +91,8 @@ export function OfferEntry({ dateId }: { dateId: string }) {
   const [raw, setRaw] = useState(date?.offer?.raw ?? '');
   const [fields, setFields] = useState<Fields>(() => (date?.offer ? { ...date.offer } : fromParse(parseOffer(''))));
   const [reading, setReading] = useState<ParsedOffer>(() => parseOffer(date?.offer?.raw ?? ''));
+  // The fields corrected by hand. On a saved offer they are the ones that differ from what its text reads as.
+  const [byHand, setByHand] = useState<(keyof Fields)[]>(() => (date?.offer ? differing({ ...date.offer }, fromParse(parseOffer(date.offer.raw))) : []));
 
   if (!date) {
     return (
@@ -97,13 +103,25 @@ export function OfferEntry({ dateId }: { dateId: string }) {
     );
   }
 
+  // Editing the text reads it again. A field corrected by hand keeps the
+  // correction unless the edit changed what the text says about that field, so
+  // fixing a typo does not put "Taken of" back to gross.
   const onRaw = (text: string) => {
     setRaw(text);
     const p = parseOffer(text);
+    const read = fromParse(p);
+    const changed = differing(fromParse(reading), read);
+    // Writing "gross" or "net" where neither stood before says something new about the basis, even when the reading is the same.
+    if (p.basisAssumed !== reading.basisAssumed) changed.push('basis');
+    const kept = byHand.filter((k) => !changed.includes(k));
     setReading(p);
-    setFields(fromParse(p));
+    setByHand(kept);
+    setFields({ ...read, ...Object.fromEntries(kept.map((k) => [k, fields[k]])) });
   };
-  const set = (patch: Partial<Fields>) => setFields((f) => ({ ...f, ...patch }));
+  const set = (patch: Partial<Fields>) => {
+    setFields((f) => ({ ...f, ...patch }));
+    setByHand((keys) => [...new Set([...keys, ...(Object.keys(patch) as (keyof Fields)[])])]);
+  };
 
   const offer = toOffer({ raw, ...fields });
   const empty = raw.trim() === '';
