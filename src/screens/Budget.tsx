@@ -279,7 +279,7 @@ function Actuals({ b, tour, today }: { b: BudgetData; tour: Tour; today: string 
       <div className="headline">
         <p className="label">Now tracking to</p>
         <p className="figure">{formatMoney(b.now.net)}</p>
-        <p className={`verdict ${diff.tone === 'flat' ? '' : diff.tone}`}>{diff.tone === 'flat' ? 'On plan' : `${diff.text} of plan`}</p>
+        <p className={`verdict ${diff.tone === 'flat' ? '' : diff.tone}`}>{diff.tone === 'flat' ? 'On plan' : diff.tone === 'good' ? `${diff.text} of plan` : `${diff.text} plan`}</p>
         <p className="label" style={{ marginTop: 2 }}>
           {b.settledCount} of {b.showCount} shows settled
           {unpaid > 0 && `, ${unpaid} with no payout entered and counted at plan`}
