@@ -107,8 +107,10 @@ function PlanRow({ line }: { line: BudgetLine }) {
   );
 }
 
-function AddExpense() {
+/** Adds a tour-wide line to the plan: an expense, or income from outside the shows. */
+function AddLine({ direction }: { direction: 'in' | 'out' }) {
   const { update } = useTour();
+  const out = direction === 'out';
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState('');
   const [amount, setAmount] = useState<Money | undefined>();
@@ -116,7 +118,7 @@ function AddExpense() {
   if (!open) {
     return (
       <button className="btn quiet" type="button" onClick={() => setOpen(true)}>
-        Add an expense
+        {out ? 'Add an expense' : 'Add other income'}
       </button>
     );
   }
@@ -132,13 +134,18 @@ function AddExpense() {
         e.preventDefault();
         if (!label.trim()) return;
         update((t) => {
-          t.lines.push({ id: newId('line'), label: label.trim(), direction: 'out', plan: amount ?? 0 });
+          t.lines.push({ id: newId('line'), label: label.trim(), direction, plan: amount ?? 0 });
         });
         close();
       }}
     >
-      <TextField label="What is it for?" value={label} onChange={setLabel} />
-      <MoneyField label="Planned amount" value={amount} onChange={setAmount} note="A tour-wide cost, such as a hired player's fee, insurance or a trailer." />
+      <TextField label={out ? 'What is it for?' : 'What is it?'} value={label} onChange={setLabel} />
+      <MoneyField
+        label="Planned amount"
+        value={amount}
+        onChange={setAmount}
+        note={out ? "A tour-wide cost, such as a hired player's fee, insurance or a trailer." : 'Money for the tour that is not from a show or merch, such as tour support from a label.'}
+      />
       <div className="btn-row">
         <button className="btn quiet" type="button" onClick={close}>
           Cancel
@@ -181,6 +188,7 @@ function Plan({ b }: { b: BudgetData }) {
             <PlanRow key={l.id} line={l} />
           ))}
         </ul>
+        <AddLine direction="in" />
       </section>
 
       <section className="section" aria-labelledby="plan-expenses">
@@ -195,7 +203,7 @@ function Plan({ b }: { b: BudgetData }) {
             <PlanRow key={l.id} line={l} />
           ))}
         </ul>
-        <AddExpense />
+        <AddLine direction="out" />
       </section>
     </>
   );

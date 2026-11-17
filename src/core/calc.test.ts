@@ -408,3 +408,34 @@ describe('safe to spend', () => {
     expect(safeToSpend(tour, '2027-03-10')).toBeUndefined();
   });
 });
+
+describe('tour-wide income', () => {
+  const supported = () => {
+    const tour = seedTour();
+    tour.lines.push({ id: 'support', label: 'Tour support', direction: 'in', plan: $(1500) });
+    return tour;
+  };
+  const line = (b: ReturnType<typeof budget>) => b.revenue.find((l) => l.id === 'line:support');
+
+  it('is a revenue line of its own, so it can be opened and changed', () => {
+    const b = budget(supported());
+    expect(line(b)).toMatchObject({ kind: 'extra', direction: 'in', label: 'Tour support', plan: $(1500), now: $(1500), progress: 'Not received yet' });
+    expect(b.plan.revenue).toBe(budget(seedTour()).plan.revenue + $(1500));
+    // Income added on a date stays in the one line it had.
+    expect(b.revenue.find((l) => l.id === 'additional')?.plan).toBe($(150));
+  });
+
+  it('counts at its plan until what was received is final', () => {
+    const tour = supported();
+    tour.lines.at(-1)!.actual = $(1000);
+    expect(line(budget(tour))).toMatchObject({ now: $(1500), progress: '$1,000 received so far' });
+    tour.lines.at(-1)!.final = true;
+    expect(line(budget(tour))).toMatchObject({ now: $(1000), progress: '$1,000 received, final' });
+  });
+
+  it('leaves the line for income added on dates out when there is none', () => {
+    const tour = seedTour();
+    tour.dates.forEach((d) => (d.lines = []));
+    expect(budget(tour).revenue.map((l) => l.id)).toEqual(['shows', 'merch']);
+  });
+});

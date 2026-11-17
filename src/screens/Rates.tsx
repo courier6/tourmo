@@ -383,6 +383,7 @@ export function LineEdit({ lineId }: { lineId: string }) {
       </main>
     );
   }
+  const out = line.direction === 'out';
   const set = (change: (l: NonNullable<typeof line>) => void) =>
     update((t) => {
       const l = t.lines.find((x) => x.id === lineId);
@@ -394,16 +395,21 @@ export function LineEdit({ lineId }: { lineId: string }) {
     <main className="screen">
       <Back to="/budget/plan">Budget</Back>
       <header className="screen-head">
-        <h1 className="title">{line.label || 'Expense'}</h1>
+        <h1 className="title">{line.label || (out ? 'Expense' : 'Income')}</h1>
         <p className="note">
-          {line.direction === 'out' ? 'A tour-wide expense' : 'Tour-wide income'} {'·'} plan {formatMoney(line.plan)}. Changes save as you type.
+          {out ? 'A tour-wide expense' : 'Tour-wide income'} {'·'} plan {formatMoney(line.plan)}. Changes save as you type.
         </p>
       </header>
       <TextField label="Name" value={line.label} onChange={(v) => set((l) => (l.label = v))} />
       <MoneyField label="Planned amount" value={line.plan} onChange={setMoney('plan')} />
-      <MoneyField label="Paid so far" value={line.actual} onChange={setMoney('actual')} note="Leave empty until something is paid. Empty is not the same as 0." />
+      <MoneyField
+        label={out ? 'Paid so far' : 'Received so far'}
+        value={line.actual}
+        onChange={setMoney('actual')}
+        note={`Leave empty until something is ${out ? 'paid' : 'received'}. Empty is not the same as 0.`}
+      />
       <Check label="That is the final amount" checked={!!line.final} onChange={(v) => set((l) => (l.final = v))} />
-      <p className="note">Until this is ticked, the line counts as the larger of the plan and what has been paid.</p>
+      <p className="note">Until this is ticked, the line counts as the larger of the plan and what has been {out ? 'paid' : 'received'}.</p>
       <a className="btn" href="#/budget/actuals">
         Done
       </a>

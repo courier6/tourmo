@@ -155,14 +155,35 @@ export function budget(tour: Tour): Budget {
   const merchIn = shows.filter((d) => d.merch.actual !== undefined).length;
   const merchUniform = shows.length > 0 && shows.every((d) => d.merch.plan === rates.merchPerShow.value);
 
+  // Income added on dates is one line. Tour-wide income, such as tour support
+  // from a label, is a line of its own each, so it can be opened and changed.
   const dateIn = tour.dates.flatMap((d) => d.lines.filter((l) => l.direction === 'in').map((l) => ({ line: l, date: d })));
-  const tourIn = tour.lines.filter((l) => l.direction === 'in');
-  const planAdditional = sum(dateIn.map((x) => x.line.plan)) + sum(tourIn.map((l) => l.plan));
-  const nowAdditional =
-    sum(dateIn.map((x) => track(x.line.plan, x.line.actual))) + sum(tourIn.map((l) => trackTourWide(l.plan, l.actual, l.final)));
-  const additionalCount = dateIn.length + tourIn.length;
-  const additionalEntered = dateIn.filter((x) => x.line.actual !== undefined).length + tourIn.filter((l) => l.actual !== undefined).length;
-  const additionalNames = [...dateIn.map((x) => `${x.line.label}, ${cityName(x.date.city)}`), ...tourIn.map((l) => l.label)];
+  const additional: BudgetLine[] = dateIn.length
+    ? [
+        {
+          id: 'additional',
+          kind: 'additional',
+          label: 'Additional revenue',
+          direction: 'in',
+          plan: sum(dateIn.map((x) => x.line.plan)),
+          now: sum(dateIn.map((x) => track(x.line.plan, x.line.actual))),
+          how: dateIn.map((x) => `${x.line.label}, ${cityName(x.date.city)}`).join('; '),
+          progress: `${dateIn.filter((x) => x.line.actual !== undefined).length} of ${dateIn.length} in`,
+        },
+      ]
+    : [];
+  const tourIn: BudgetLine[] = tour.lines
+    .filter((l) => l.direction === 'in')
+    .map((l) => ({
+      id: `line:${l.id}`,
+      kind: 'extra',
+      label: l.label,
+      direction: 'in',
+      plan: l.plan,
+      now: trackTourWide(l.plan, l.actual, l.final),
+      how: 'Added by you',
+      progress: l.actual === undefined ? 'Not received yet' : `${formatMoney(l.actual)} received${l.final ? ', final' : ' so far'}`,
+    }));
 
   const revenue: BudgetLine[] = [
     {
@@ -185,16 +206,8 @@ export function budget(tour: Tour): Budget {
       how: merchUniform ? `${formatMoney(rates.merchPerShow.value)} × ${plural(shows.length, 'show')}` : plural(shows.length, 'show'),
       progress: `${merchIn} of ${plural(shows.length, 'show')} in`,
     },
-    {
-      id: 'additional',
-      kind: 'additional',
-      label: 'Additional revenue',
-      direction: 'in',
-      plan: planAdditional,
-      now: nowAdditional,
-      how: additionalNames.length ? additionalNames.join('; ') : 'Nothing added',
-      progress: additionalCount ? `${additionalEntered} of ${additionalCount} in` : 'Nothing added',
-    },
+    ...additional,
+    ...tourIn,
   ];
 
   // Expenses
