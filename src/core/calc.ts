@@ -31,6 +31,16 @@ export function showActual(date: TourDate): Money | undefined {
   return undefined;
 }
 
+/**
+ * True for a show ticked settled whose payout is still not known: it has no
+ * offer, or its deal needs the box office and none was entered, and no amount
+ * paid was typed in its place. Such a show goes on counting at its plan, so
+ * the screens say that the figure is missing.
+ */
+export function settledWithoutPayout(date: TourDate): boolean {
+  return date.kind === 'show' && date.settled && showActual(date) === undefined;
+}
+
 export const fuelOnDate = (date: TourDate): Money => sum(date.fuelFillUps);
 
 const track = (plan: Money, actual: Money | undefined) => actual ?? plan;

@@ -23,6 +23,7 @@ import {
   routeMiles,
   safeToSpend,
   seedTour,
+  settledWithoutPayout,
   SHORTHAND_EXAMPLES,
   showActual,
   toOffer,
@@ -278,6 +279,21 @@ describe('tracking rules', () => {
     const tour = seedTour();
     tour.dates[3].merch.actual = 0;
     expect(budget(tour).revenue[1].now).toBe($(1615 - 300));
+  });
+
+  it('a show settled with no payout entered is told apart from one that was paid', () => {
+    const tour = seedTour();
+    const show = { ...tour.dates[3], settled: true, boxOffice: undefined, showActualOverride: undefined };
+    // A deal with a percentage needs the box office before the payout is known.
+    expect(settledWithoutPayout({ ...show, offer: offer('$1K vs 70%') })).toBe(true);
+    expect(settledWithoutPayout({ ...show, offer: offer('80% of door') })).toBe(true);
+    expect(settledWithoutPayout({ ...show, offer: undefined })).toBe(true);
+    expect(settledWithoutPayout({ ...show, offer: offer('$1K vs 70%'), boxOffice: $(1000) })).toBe(false);
+    expect(settledWithoutPayout({ ...show, offer: offer('80% of door'), showActualOverride: $(400) })).toBe(false);
+    // A flat deal paid its guarantee, and a show not yet settled is not missing anything.
+    expect(settledWithoutPayout({ ...show, offer: offer('$800 flat') })).toBe(false);
+    expect(settledWithoutPayout({ ...show, offer: offer('$1K vs 70%'), settled: false })).toBe(false);
+    expect(settledWithoutPayout({ ...show, kind: 'off' })).toBe(false);
   });
 
   it('tour-wide lines hold the larger of plan and actual until final', () => {
