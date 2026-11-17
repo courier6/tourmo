@@ -1,9 +1,10 @@
 // Setting up a new tour in three steps: name it, add the dates, set the
 // rates. The tour is created at the end of step 1 and saved as it is filled
-// in, so setup can be left and picked up again from the tour list.
+// in, so setup can be left and picked up again from the tour list. The rates
+// step can be skipped: setup then ends at the dates.
 
 import { useRef, useState } from 'react';
-import { carryOver, CURRENCIES, CURRENCY_OPTIONS, currencyOf, describeLeg, finishSetup, formatDay, formatDistance, hasUsFigures, legHome, legInto, listed, missingFigures, newId, routeMiles, UNIT_WORDS, UNITS_OPTIONS, unitsOf, unknownLegs, type Currency, type DateKind, type Place, type Units } from '../core';
+import { carryOver, CURRENCIES, CURRENCY_OPTIONS, currencyOf, describeLeg, finishSetup, formatDay, formatDistance, hasUsFigures, legHome, legInto, listed, missingFigures, newId, routeMiles, UNIT_WORDS, UNITS_OPTIONS, unitsOf, unknownLegs, type Currency, type DateKind, type Place, type TourDate, type Units } from '../core';
 import { Back, SelectField, TextField } from '../components';
 import { CityField, MilesField } from '../CityField';
 import { go } from '../router';
@@ -61,7 +62,7 @@ export function NameStep() {
       <Steps step={1} />
       <header className="screen-head">
         <h1 className="title">Name the tour</h1>
-        <p className="note">Three steps: a name, the dates, then the rates. It is saved as you go, so you can stop and pick it up later.</p>
+        <p className="note">Three steps: a name, the dates, then the rates, which can wait until later. It is saved as you go, so you can stop and pick it up later.</p>
       </header>
       <form
         onSubmit={(e) => {
@@ -123,6 +124,8 @@ export function DatesStep() {
   // Drives are only worked out between cities of the list, which covers the United States and Canada.
   const list = hasUsFigures(tour);
   const last = tour.dates.at(-1);
+  // The figures this tour has no estimate for, which a plan made without the rates step counts as 0.
+  const missing = missingFigures(tour);
 
   const [date, setDate] = useState(last ? nextDay(last.date) : '');
   const [city, setCity] = useState('');
@@ -130,17 +133,19 @@ export function DatesStep() {
   const [kind, setKind] = useState<DateKind>('show');
   const [miles, setMiles] = useState<number | undefined>();
   const [blocked, setBlocked] = useState(false);
+  // The date loaded into the form to be changed. Empty when the form adds a new one.
+  const [editingId, setEditingId] = useState<string>();
+  const editing = tour.dates.find((d) => d.id === editingId);
   const cityInput = useRef<HTMLInputElement>(null);
 
   const complete = /^\d{4}-\d{2}-\d{2}$/.test(date) && city.trim() !== '';
   // A city typed with no date is a date half entered; it is never dropped silently.
   const halfEntered = !complete && city.trim() !== '';
 
-  const add = () => {
-    update((t) => {
-      t.dates.push({ id: newId('date'), date, city: city.trim(), place, kind, milesFromPrevious: miles, merch: { plan: 0 }, lodging: { plan: 0 }, fuelFillUps: [], lines: [], settled: false });
-    });
-    setDate(nextDay(date));
+  /** Empties the form, ready for the day after the given one. */
+  const clear = (after: string | undefined) => {
+    setEditingId(undefined);
+    setDate(after ? nextDay(after) : '');
     setCity('');
     setPlace(undefined);
     setKind('show');
@@ -148,9 +153,49 @@ export function DatesStep() {
     setBlocked(false);
   };
 
-  const next = () => {
+  /** Adds the date in the form, or writes it over the date being changed. */
+  const save = () => {
+    update((t) => {
+      const target = t.dates.find((d) => d.id === editing?.id);
+      if (!target) {
+        t.dates.push({ id: newId('date'), date, city: city.trim(), place, kind, milesFromPrevious: miles, merch: { plan: 0 }, lodging: { plan: 0 }, fuelFillUps: [], lines: [], settled: false });
+        return;
+      }
+      target.date = date;
+      target.city = city.trim();
+      target.place = place;
+      target.kind = kind;
+      target.milesFromPrevious = miles;
+      if (kind !== 'show') target.offer = undefined;
+    });
+    // The next date to add most often follows the last one of the run.
+    const others = tour.dates.filter((d) => d.id !== editing?.id).map((d) => d.date);
+    clear([...others, date].sort().at(-1));
+  };
+
+  const startEdit = (d: TourDate) => {
+    setEditingId(d.id);
+    setDate(d.date);
+    setCity(d.city);
+    setPlace(d.place);
+    setKind(d.kind);
+    setMiles(d.milesFromPrevious);
+    setBlocked(false);
+    cityInput.current?.focus();
+  };
+
+  /**
+   * Leaves the step: on to the rates, or straight out of setup. Ending setup
+   * here needs nothing from the rates step, since every rate left empty is
+   * estimated, or counted as 0 and said so on the budget.
+   */
+  const leave = (finish: boolean) => {
     if (halfEntered) return setBlocked(true);
-    if (complete) add();
+    if (complete) save();
+    if (finish) {
+      update(finishSetup);
+      return go('/budget/plan');
+    }
     update((t) => {
       t.setup = 'rates';
     });
@@ -183,9 +228,18 @@ export function DatesStep() {
                 </span>
               </span>
               <span className="end">
-                <button className="text-btn" type="button" onClick={() => update((t) => (t.dates = t.dates.filter((x) => x.id !== d.id)))}>
-                  Remove<span className="sr-only"> {d.city}</span>
-                </button>
+                {d.id === editingId ? (
+                  <span className="status">Editing</span>
+                ) : (
+                  <>
+                    <button className="text-btn" type="button" onClick={() => startEdit(d)}>
+                      Edit<span className="sr-only"> {d.city}</span>
+                    </button>
+                    <button className="text-btn" type="button" onClick={() => update((t) => (t.dates = t.dates.filter((x) => x.id !== d.id)))}>
+                      Remove<span className="sr-only"> {d.city}</span>
+                    </button>
+                  </>
+                )}
               </span>
             </li>
           ))}
@@ -194,14 +248,19 @@ export function DatesStep() {
 
       <form
         className="inline-form"
-        aria-label={tour.dates.length ? 'Add another date' : 'Add the first date'}
+        aria-label={editing ? `Change ${editing.city}` : tour.dates.length ? 'Add another date' : 'Add the first date'}
         onSubmit={(e) => {
           e.preventDefault();
           if (!complete) return;
-          add();
+          save();
           cityInput.current?.focus();
         }}
       >
+        {editing && (
+          <p className="note" style={{ marginTop: 14 }}>
+            Changing {formatDay(editing.date)} {'·'} {editing.city}
+          </p>
+        )}
         <TextField label="Date" type="date" value={date} onChange={setDate} />
         <CityField
           label="City"
@@ -226,10 +285,21 @@ export function DatesStep() {
             ['travel', 'Travel day'],
           ]}
         />
-        {city.trim() !== '' && <MilesField label={`${words.Distances} from the previous stop`} value={miles} onChange={setMiles} leg={legInto(tour, { date, city, place, milesFromPrevious: miles })} units={units} list={list} />}
-        <button className="btn quiet" type="submit" disabled={!complete} style={complete ? undefined : { opacity: 0.5 }}>
-          {tour.dates.length ? 'Add another date' : 'Add this date'}
-        </button>
+        {city.trim() !== '' && <MilesField label={`${words.Distances} from the previous stop`} value={miles} onChange={setMiles} leg={legInto(tour, { id: editingId, date, city, place, milesFromPrevious: miles })} units={units} list={list} />}
+        {editing ? (
+          <div className="btn-row">
+            <button className="btn quiet" type="button" onClick={() => clear(tour.dates.at(-1)?.date)}>
+              Cancel
+            </button>
+            <button className="btn quiet" type="submit" disabled={!complete} style={complete ? undefined : { opacity: 0.5 }}>
+              Save date
+            </button>
+          </div>
+        ) : (
+          <button className="btn quiet" type="submit" disabled={!complete} style={complete ? undefined : { opacity: 0.5 }}>
+            {tour.dates.length ? 'Add another date' : 'Add this date'}
+          </button>
+        )}
       </form>
 
       {tour.dates.length > 0 && (
@@ -246,9 +316,16 @@ export function DatesStep() {
           {city.trim()} has no date yet. Give it a date, or clear the city, before going on.
         </p>
       )}
-      <button className="btn" type="button" onClick={next}>
+      <button className="btn" type="button" onClick={() => leave(false)}>
         Next: set the rates
       </button>
+      <button className="btn quiet" type="button" onClick={() => leave(true)}>
+        Skip the rates for now
+      </button>
+      <p className="note" style={{ marginTop: 8 }}>
+        The rates start on estimates, or on the figures of your last tour, and can be changed any time under Rates.
+        {missing.length > 0 && ` The plan counts ${listed(missing)} as 0 until you type ${missing.length === 1 ? 'it' : 'them'} there.`}
+      </p>
       {tour.dates.length === 0 && !complete && (
         <p className="note" style={{ marginTop: 8 }}>
           No dates yet? You can go on and add them later under Dates.
