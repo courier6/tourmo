@@ -98,27 +98,51 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 const isMoney = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 const isOptionalMoney = (v: unknown) => v === undefined || isMoney(v);
 const isPlanActual = (v: unknown) => isObject(v) && isMoney(v.plan) && isOptionalMoney(v.actual);
+const isOneOf = (v: unknown, ...values: string[]) => typeof v === 'string' && values.includes(v);
+/** A real day written "YYYY-MM-DD". Anything else throws when its tour is placed in time. */
+const isDay = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00Z'));
+
+const isLine = (v: unknown) => isObject(v) && typeof v.id === 'string' && typeof v.label === 'string' && isOneOf(v.direction, 'in', 'out') && isMoney(v.plan) && isOptionalMoney(v.actual);
+const isCommission = (v: unknown) => isObject(v) && typeof v.id === 'string' && typeof v.name === 'string' && isMoney(v.rate) && isOneOf(v.base, 'show', 'show+merch');
+const isOffer = (v: unknown) =>
+  isObject(v) &&
+  typeof v.raw === 'string' &&
+  isOneOf(v.type, 'flat', 'versus', 'plus', 'percentage') &&
+  isMoney(v.guarantee) &&
+  isOptionalMoney(v.percentage) &&
+  isOptionalMoney(v.threshold) &&
+  isOneOf(v.basis, 'gross', 'net');
+const isPlace = (v: unknown) => isObject(v) && isMoney(v.lat) && isMoney(v.lon);
+const isDrives = (v: unknown) => isObject(v) && Object.values(v).every((d) => isObject(d) && isMoney(d.miles));
 
 function isTourDate(v: unknown): v is TourDate {
   return (
     isObject(v) &&
     typeof v.id === 'string' &&
-    typeof v.date === 'string' &&
+    isDay(v.date) &&
     typeof v.city === 'string' &&
-    (v.kind === 'show' || v.kind === 'off' || v.kind === 'travel') &&
+    (v.place === undefined || isPlace(v.place)) &&
+    isOneOf(v.kind, 'show', 'off', 'travel') &&
+    isOptionalMoney(v.milesFromPrevious) &&
+    (v.offer === undefined || isOffer(v.offer)) &&
+    isOptionalMoney(v.boxOffice) &&
+    isOptionalMoney(v.showActualOverride) &&
     isPlanActual(v.merch) &&
     isPlanActual(v.lodging) &&
     Array.isArray(v.fuelFillUps) &&
     v.fuelFillUps.every(isMoney) &&
     Array.isArray(v.lines) &&
+    v.lines.every(isLine) &&
     typeof v.settled === 'boolean'
   );
 }
 
 /**
- * Whether saved data has every part of a tour the screens read. Data saved by
- * an older or newer version, or edited by hand, is checked with this before
- * it is shown.
+ * Whether saved data has every part of a tour the screens read, in the shape
+ * they read it. Data saved by an older or newer version, or edited by hand,
+ * is checked with this before it is shown: a figure stored as text, a line
+ * that is not a line or a day that is not a day would otherwise throw, or
+ * work out to nonsense, on the tour list itself.
  */
 export function isTour(v: unknown): v is Tour {
   return (
@@ -126,16 +150,24 @@ export function isTour(v: unknown): v is Tour {
     typeof v.id === 'string' &&
     typeof v.name === 'string' &&
     typeof v.homeCity === 'string' &&
+    (v.homePlace === undefined || isPlace(v.homePlace)) &&
     Array.isArray(v.commissions) &&
+    v.commissions.every(isCommission) &&
     isObject(v.vehicle) &&
     isOptionalMoney(v.vehicle.dailyRate) &&
     isOptionalMoney(v.vehicle.days) &&
+    isOptionalMoney(v.vehicle.actual) &&
     isObject(v.fuel) &&
     isOptionalMoney(v.fuel.mpg) &&
     isOptionalMoney(v.fuel.pricePerGallon) &&
     isOptionalMoney(v.merchPerShowDefault) &&
     isOptionalMoney(v.lodgingPerNightDefault) &&
+    isOptionalMoney(v.lodgingRooms) &&
+    isOptionalMoney(v.milesHome) &&
+    (v.drives === undefined || isDrives(v.drives)) &&
+    (v.setup === undefined || isOneOf(v.setup, 'dates', 'rates')) &&
     Array.isArray(v.lines) &&
+    v.lines.every(isLine) &&
     Array.isArray(v.dates) &&
     v.dates.every(isTourDate)
   );

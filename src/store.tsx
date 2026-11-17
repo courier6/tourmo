@@ -57,12 +57,18 @@ interface Loaded {
   setAside: boolean;
 }
 
-/** Reads the saved text. Undefined when it is not tours this version understands. */
-function read(text: string): { data: Stored; complete: boolean } | undefined {
+/**
+ * Reads the saved text. Undefined when it is not tours this version
+ * understands. Tours that are not in the shape the screens read are left out,
+ * and `complete` is false so that a copy of the text is kept. Every screen
+ * takes the dates to be in order, so they are put in order here too.
+ */
+export function readSaved(text: string): { data: Stored; complete: boolean } | undefined {
   try {
     const saved = JSON.parse(text) as { version?: unknown; tours?: unknown; activeTourId?: unknown } | null;
     if (!saved || !Array.isArray(saved.tours) || ![1, 2, 3].includes(saved.version as number)) return undefined;
     const tours = saved.tours.filter(isTour);
+    for (const tour of tours) tour.dates.sort((a, b) => a.date.localeCompare(b.date));
     const activeTourId = typeof saved.activeTourId === 'string' ? saved.activeTourId : '';
     const data: Stored =
       saved.version === 3 ? { version: 3, tours, activeTourId } : fromVersion2(saved.version === 1 ? fromVersion1({ tours, activeTourId }) : { tours, activeTourId });
@@ -107,7 +113,7 @@ function load(): Loaded {
   }
   if (!text) return { data: withDrives(fresh()), setAside: false };
 
-  const result = read(text);
+  const result = readSaved(text);
   if (result?.complete) return { data: withDrives(result.data), setAside: false };
 
   // Something in the saved text is damaged or from a version this one does not
@@ -158,7 +164,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== KEY || e.newValue === null) return;
-      const result = read(e.newValue);
+      const result = readSaved(e.newValue);
       if (!result?.complete) return;
       const mine = held.current.activeTourId;
       const next = { ...withDrives(result.data), activeTourId: result.data.tours.some((t) => t.id === mine) ? mine : '' };
