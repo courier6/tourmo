@@ -11,9 +11,10 @@ import { NumberField } from './components';
 let loading: Promise<City[]> | undefined;
 const loadCities = () => (loading ??= import('./data/cities.json').then((m) => prepareCities(m.default)));
 
-function useCities(): City[] | undefined {
+function useCities(wanted: boolean): City[] | undefined {
   const [cities, setCities] = useState<City[]>();
   useEffect(() => {
+    if (!wanted) return;
     let live = true;
     loadCities().then(
       (list) => live && setCities(list),
@@ -22,8 +23,8 @@ function useCities(): City[] | undefined {
     return () => {
       live = false;
     };
-  }, []);
-  return cities;
+  }, [wanted]);
+  return wanted ? cities : undefined;
 }
 
 const placeOf = (c: City): Place => ({ lat: c.lat, lon: c.lon, ...(c.area ? { area: c.area } : {}) });
@@ -37,9 +38,16 @@ export function CityField({
   autoFocus,
   inputRef,
   units = 'us',
+  list = true,
 }: {
   label: string;
   value: string;
+  /**
+   * False on a tour outside the United States and Canada, which the list
+   * does not cover. The field then takes the city as typed: suggesting or
+   * matching would turn "Amsterdam" into Amsterdam, NY.
+   */
+  list?: boolean;
   /** What the tour's distances are typed in, for the wording. */
   units?: Units;
   /** Where the city is, when it has been matched to the list. */
@@ -50,7 +58,7 @@ export function CityField({
   inputRef?: Ref<HTMLInputElement>;
 }) {
   const id = useId();
-  const cities = useCities();
+  const cities = useCities(list);
   const [focused, setFocused] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [active, setActive] = useState(0);
@@ -143,7 +151,22 @@ export function CityField({
  * stands. The figure held is always miles: on a tour shown in kilometres the
  * field shows and takes kilometres, and converts on the way in and out.
  */
-export function MilesField({ label, value, onChange, leg, units = 'us' }: { label: string; value: number | undefined; onChange: (v: number | undefined) => void; leg: Leg; units?: Units }) {
+export function MilesField({
+  label,
+  value,
+  onChange,
+  leg,
+  units = 'us',
+  list = true,
+}: {
+  label: string;
+  value: number | undefined;
+  onChange: (v: number | undefined) => void;
+  leg: Leg;
+  units?: Units;
+  /** False where cities are typed, not picked, so there is no list to point to. */
+  list?: boolean;
+}) {
   const words = UNIT_WORDS[units];
   const from = leg.from || 'the previous stop';
   const estimate = leg.estimate;
@@ -158,7 +181,11 @@ export function MilesField({ label, value, onChange, leg, units = 'us' }: { labe
   const figure = estimate === undefined ? '' : leg.exact ? `${distanceNumber(estimate, units)} road ${words.distances} from ${from}${leg.minutes ? `, allow ${formatDrive(leg.minutes)}` : ''}` : `about ${formatDistance(estimate, units)} from ${from}, estimated`;
   const note =
     estimate === undefined
-      ? `Pick both cities from the list to have this worked out, or type the ${words.distances}.`
+      ? list
+        ? `Pick both cities from the list to have this worked out, or type the ${words.distances}.`
+        : value === undefined
+          ? `Type the ${words.distances} of this drive. Left empty, it is not counted in the fuel plan.`
+          : undefined
       : estimate === 0
         ? 'Same city as the stop before, so no drive is counted.'
         : value === undefined

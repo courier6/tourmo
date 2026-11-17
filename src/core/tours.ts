@@ -1,6 +1,6 @@
 // Starting a tour from nothing, and placing a tour in time for the tour list.
 
-import { keepEstimates, lodgingFor, tourRates } from './rates';
+import { hasUsFigures, keepEstimates, lodgingFor, tourRates } from './rates';
 import { keepDrives } from './route';
 import { SAMPLE_TOUR_IDS } from './seed';
 import { showDates, tourSpan } from './calc';
@@ -123,12 +123,46 @@ export function finishSetup(tour: Tour): void {
 }
 
 /**
+ * Lets go of the United States estimates a tour holds: the van rate, fuel
+ * price and lodging kept from setup, and every night still planned at the
+ * estimate for its city. Figures the band typed are left alone.
+ */
+function releaseUsFigures(tour: Tour): void {
+  const kept = new Set(tour.estimated ?? []);
+  const ownLodging = tour.lodgingPerNightDefault !== undefined && !kept.has('lodgingPerNight');
+  if (!ownLodging) for (const d of tour.dates) if (d.lodging.plan > 0 && d.lodging.plan === lodgingFor(tour, d)) d.lodging.plan = 0;
+  if (kept.delete('vanDailyRate')) delete tour.vehicle.dailyRate;
+  if (kept.delete('gasPrice')) delete tour.fuel.pricePerGallon;
+  if (kept.delete('lodgingPerNight')) delete tour.lodgingPerNightDefault;
+  if (tour.estimated) tour.estimated = [...kept];
+}
+
+/**
  * Keeps the tour in another currency. Nothing is converted: every figure
- * keeps its number and only the symbol changes. Changes the tour passed in.
+ * keeps its number and only the symbol changes. A tour that leaves dollars
+ * also lets go of its United States estimates, which would otherwise read
+ * as figures in the new currency. Changes the tour passed in.
  */
 export function setCurrency(tour: Tour, currency: Currency): void {
+  if (hasUsFigures(tour) && currency !== 'USD') releaseUsFigures(tour);
   if (currency === 'USD') delete tour.currency;
   else tour.currency = currency;
+}
+
+/**
+ * Sets the lodging figure of a tour that has no estimate for it. Its nights
+ * were planned from this figure, or at 0 for want of one, so each night still
+ * planned at the old figure takes the new one. A night changed by hand under
+ * Dates is left alone, and so is a night at home. During setup the nights
+ * are filled when it ends. Changes the tour passed in.
+ */
+export function setOwnLodging(tour: Tour, value: Money | undefined): void {
+  const before = tour.dates.map((d) => lodgingFor(tour, d));
+  tour.lodgingPerNightDefault = value;
+  if (tour.setup) return;
+  tour.dates.forEach((d, i) => {
+    if (d.lodging.plan === before[i]) d.lodging.plan = lodgingFor(tour, d);
+  });
 }
 
 /**

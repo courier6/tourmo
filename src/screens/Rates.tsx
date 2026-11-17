@@ -2,7 +2,7 @@
 // The sections are shared with the last step of setting up a new tour.
 
 import { useState } from 'react';
-import { CURRENCY_OPTIONS, currencyOf, DEFAULT_PEOPLE, findLine, foodPlan, formatNumber, formatPercent, fuelPlan, distanceNumber, formatMileage, fuelPriceIn, legHome, mileageIn, mpgFrom, newId, peopleOn, perGallonFrom, routeMiles, setCurrency, setUnits, tourDays, tourRates, UNIT_WORDS, UNITS_OPTIONS, unitsOf, type Commission, type Currency, type EstimatedRate, type Money, type Rate, type Tour, type Units } from '../core';
+import { CURRENCY_OPTIONS, currencyOf, DEFAULT_PEOPLE, hasUsFigures, findLine, foodPlan, formatNumber, formatPercent, fuelPlan, distanceNumber, formatMileage, fuelPriceIn, legHome, mileageIn, mpgFrom, newId, peopleOn, perGallonFrom, routeMiles, setCurrency, setOwnLodging, setUnits, tourDays, tourRates, UNIT_WORDS, UNITS_OPTIONS, unitsOf, type Commission, type Currency, type EstimatedRate, type Money, type Rate, type Tour, type Units } from '../core';
 import { Amount, Back, Check, MoneyField, NumberField, SelectField, TextField } from '../components';
 import { useMoney } from '../currency';
 import { go } from '../router';
@@ -14,6 +14,8 @@ const asDollars = (cents: number) => (cents / 100).toFixed(cents % 100 ? 2 : 0);
 
 /** What a field's grey figure is and where it comes from, or how to get back to it. */
 function rateNote(name: string, r: Rate, show: (n: number) => string, extra = ''): string {
+  // With no estimate there is no grey figure to explain, and none to go back to.
+  if (r.noEstimate) return r.typed ? '' : `${name}: no estimate outside the United States, so nothing is planned until you type a figure.${extra}`;
   if (!r.typed) return `${name}: ${show(r.estimate)}, ${r.basis}.${extra}`;
   if (r.estimated) return `${name}: an estimate kept from when the tour was set up. Clear it for today's (${show(r.estimate)}), or type your own.`;
   return r.value === r.estimate ? '' : `${name}: your figure. Clear it to use the estimate (${show(r.estimate)}).`;
@@ -206,7 +208,7 @@ export function VanSection({ planning = false }: { planning?: boolean }) {
       ) : (
         <>
           <div className="grid-2">
-            <MoneyField label="Daily rate" value={tour.vehicle.dailyRate} placeholder={asDollars(vanDailyRate.estimate)} onChange={(v) => setRate('vanDailyRate', (t) => (t.vehicle.dailyRate = v))} />
+            <MoneyField label="Daily rate" value={tour.vehicle.dailyRate} placeholder={vanDailyRate.noEstimate ? undefined : asDollars(vanDailyRate.estimate)} onChange={(v) => setRate('vanDailyRate', (t) => (t.vehicle.dailyRate = v))} />
             <NumberField label="Days" suffix="days" value={tour.vehicle.days} placeholder={String(vanDays.estimate)} onChange={(v) => update((t) => (t.vehicle.days = v))} />
           </div>
           <Notes lines={[rateNote('Daily rate', vanDailyRate, money, ' A quote with the waiver and tax in it is the better figure.'), daysNote]} />
@@ -251,7 +253,7 @@ export function FuelSection({ planning = false }: { planning?: boolean }) {
         <MoneyField
           label={`Price per ${words.volume}`}
           value={tour.fuel.pricePerGallon === undefined ? undefined : fuelPriceIn(tour.fuel.pricePerGallon, units)}
-          placeholder={asDollars(fuelPriceIn(gasPrice.estimate, units))}
+          placeholder={gasPrice.noEstimate ? undefined : asDollars(fuelPriceIn(gasPrice.estimate, units))}
           onChange={(v) => setRate('gasPrice', (t) => (t.fuel.pricePerGallon = v === undefined ? undefined : perGallonFrom(v, units)))}
         />
       </div>
@@ -296,30 +298,39 @@ export function DefaultsSection({ planning = false }: { planning?: boolean }) {
           onChange={(v) => setRate('merchCost', (t) => (t.merchCostRate = v === undefined ? undefined : v / 100))}
         />
       </div>
-      <div className="grid-2">
-        <NumberField
-          label="Rooms a night"
-          suffix="rooms"
-          value={tour.lodgingRooms}
-          placeholder={String(Math.ceil(peopleOn(tour) / 2))}
-          onChange={(v) =>
-            update((t) => {
-              t.lodgingRooms = v;
-              releaseLodgingEstimate(t);
-            })
-          }
-        />
-        <MoneyField label="Lodging per night" value={tour.lodgingPerNightDefault} placeholder={asDollars(lodgingPerNight.estimate)} onChange={(v) => setRate('lodgingPerNight', (t) => (t.lodgingPerNightDefault = v))} />
-      </div>
+      {lodgingPerNight.noEstimate ? (
+        // The rooms only feed the estimate, and here there is none: one figure for the night is all that is asked.
+        <MoneyField label="Lodging per night, everyone" value={tour.lodgingPerNightDefault} onChange={(v) => setRate('lodgingPerNight', (t) => setOwnLodging(t, v))} />
+      ) : (
+        <div className="grid-2">
+          <NumberField
+            label="Rooms a night"
+            suffix="rooms"
+            value={tour.lodgingRooms}
+            placeholder={String(Math.ceil(peopleOn(tour) / 2))}
+            onChange={(v) =>
+              update((t) => {
+                t.lodgingRooms = v;
+                releaseLodgingEstimate(t);
+              })
+            }
+          />
+          <MoneyField label="Lodging per night" value={tour.lodgingPerNightDefault} placeholder={asDollars(lodgingPerNight.estimate)} onChange={(v) => setRate('lodgingPerNight', (t) => (t.lodgingPerNightDefault = v))} />
+        </div>
+      )}
       <Notes
         lines={[
           merchPerShow.typed ? '' : `Merch: ${merchPerShow.basis}. Type what a show usually sells.`,
           rateNote('Merch costs', merchCost, formatPercent, ' Type 0 to plan merch costs as an expense of their own.'),
-          tour.lodgingRooms === undefined ? `Rooms: one for every two people, so ${rooms} for ${peopleOn(tour)}.` : '',
-          rateNote('Lodging', lodgingPerNight, money) || `Lodging: your figure, so the ${rooms === 1 ? 'room' : 'rooms'} count is not used.`,
+          tour.lodgingRooms === undefined && !lodgingPerNight.noEstimate ? `Rooms: one for every two people, so ${rooms} for ${peopleOn(tour)}.` : '',
+          lodgingPerNight.noEstimate
+            ? rateNote('Lodging', lodgingPerNight, money, ' Type what one night costs for all the rooms.')
+            : rateNote('Lodging', lodgingPerNight, money) || `Lodging: your figure, so the ${rooms === 1 ? 'room' : 'rooms'} count is not used.`,
           planning
             ? 'Merch is planned for every show, and lodging for every night away from the home city. Each date can be changed later under Dates.'
-            : 'Used when you add a date. To change a date already on the tour, edit it under Dates.',
+            : lodgingPerNight.noEstimate
+              ? 'Merch is used when you add a date. Lodging is planned for every night away from the home city, and a night still at this figure follows it when you change it. To change one date, edit it under Dates.'
+              : 'Used when you add a date. To change a date already on the tour, edit it under Dates.',
         ]}
       />
     </section>
@@ -356,8 +367,9 @@ export function Rates() {
               t.homePlace = place;
             })
           }
-          note="The route starts and ends here."
+          note={hasUsFigures(tour) ? 'The route starts and ends here.' : 'The route starts and ends here: abroad, where the van is picked up and handed back.'}
           units={unitsOf(tour)}
+          list={hasUsFigures(tour)}
         />
         <MilesField
           label={`${UNIT_WORDS[unitsOf(tour)].Distances} home from the last date`}
@@ -365,12 +377,16 @@ export function Rates() {
           onChange={(v) => update((t) => (t.milesHome = v))}
           leg={legHome(tour)}
           units={unitsOf(tour)}
+          list={hasUsFigures(tour)}
         />
         <SelectField<Currency> label="Currency" value={currencyOf(tour)} onChange={(v) => update((t) => setCurrency(t, v))} options={CURRENCY_OPTIONS} />
         <SelectField<Units> label="Distances and fuel" value={unitsOf(tour)} onChange={(v) => update((t) => setUnits(t, v))} options={UNITS_OPTIONS} />
         <Notes
           lines={[
             'Currency: every amount on this tour is in it. Changing it converts nothing: 1,000 stays 1,000.',
+            hasUsFigures(tour)
+              ? 'The gas, lodging and van estimates are for the United States. Changing to another currency clears them, and those figures are then yours to type.'
+              : 'The gas, lodging and van estimates and the city list are for the United States, so this tour plans its van, fuel price and lodging from the figures you type.',
             'Distances and fuel: changing these converts the figures, so every drive and the fuel plan stay as they are.',
           ]}
         />

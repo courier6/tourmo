@@ -2,7 +2,7 @@
 // versions in the same ledger style so a tour can be built end to end.
 
 import { useState } from 'react';
-import { dateStatus, describeLeg, distanceNumber, formatDay, legHome, legInto, lodgingFor, newId, routeMiles, STATUS_LABEL, tourRates, UNIT_WORDS, unitsOf, type DateKind, type Money, type Place, type TourDate } from '../core';
+import { dateStatus, describeLeg, distanceNumber, formatDay, hasUsFigures, legHome, legInto, lodgingFor, newId, routeMiles, sameCity, STATUS_LABEL, tourRates, UNIT_WORDS, unitsOf, type DateKind, type Money, type Place, type TourDate } from '../core';
 import { Back, Check, MoneyField, SelectField, TextField } from '../components';
 import { CityField, MilesField } from '../CityField';
 import { useMoney } from '../currency';
@@ -62,6 +62,7 @@ export function DateForm({ dateId }: { dateId?: string }) {
   const { tour, update } = useTour();
   const money = useMoney();
   const units = unitsOf(tour);
+  const list = hasUsFigures(tour);
   const existing = dateId ? tour.dates.find((d) => d.id === dateId) : undefined;
   const last = tour.dates.at(-1);
 
@@ -135,8 +136,9 @@ export function DateForm({ dateId }: { dateId?: string }) {
             setCity(c);
             setPlace(p);
           }}
-          note="Start typing and pick it from the list."
+          note={list ? 'Start typing and pick it from the list.' : undefined}
           units={units}
+          list={list}
         />
         <SelectField
           label="Kind of day"
@@ -155,7 +157,7 @@ export function DateForm({ dateId }: { dateId?: string }) {
             ) : undefined
           }
         />
-        <MilesField label={`${UNIT_WORDS[units].Distances} from the previous stop`} value={miles} onChange={setMiles} leg={legInto(tour, { id: existing?.id, date, city, place, milesFromPrevious: miles })} units={units} />
+        <MilesField label={`${UNIT_WORDS[units].Distances} from the previous stop`} value={miles} onChange={setMiles} leg={legInto(tour, { id: existing?.id, date, city, place, milesFromPrevious: miles })} units={units} list={list} />
         {kind === 'show' && <MoneyField label="Planned merch" value={merch} onChange={setMerch} placeholder={String(merchFigure / 100)} note={merch === undefined ? 'Left empty, it uses the merch per show from Rates.' : undefined} />}
         {lodgingFigure > 0 && <Check label="No room to pay for this night" checked={noRoom} onChange={setNoRoom} />}
         {noRoom && lodgingFigure > 0 ? (
@@ -172,7 +174,9 @@ export function DateForm({ dateId }: { dateId?: string }) {
                 : city.trim() === ''
                   ? 'Worked out once the city is in.'
                   : lodgingFigure === 0
-                    ? 'A night at home, so nothing is planned. Type a figure if there is a cost.'
+                    ? list || sameCity(city, tour.homeCity)
+                      ? 'A night at home, so nothing is planned. Type a figure if there is a cost.'
+                      : 'No lodging figure on this tour yet, so nothing is planned. Type what this night costs.'
                     : ownLodging
                       ? 'Left empty, it uses your lodging per night from Rates.'
                       : `Left empty, it uses ${money(lodgingFigure)}: ${tourRates(tour).rooms} ${tourRates(tour).rooms === 1 ? 'room' : 'rooms'} at the federal lodging rate for ${city.trim()} that month.`

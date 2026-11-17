@@ -256,7 +256,8 @@ export function Tours() {
             : figures === 'kept'
               ? 'Kept from the last time they were looked up. The lookup server is not answering, so these and straight-line drive estimates are used.'
               : 'The figures saved with the app. The lookup server is not answering, so these and straight-line drive estimates are used.'}{' '}
-          Gas prices: week of {formatRange(gas.asOf, gas.asOf)}. Lodging rates: federal year {lodging.fiscalYear}. Van rental: {formatMonth(van.asOf)}.
+          Gas prices: week of {formatRange(gas.asOf, gas.asOf)}. Lodging rates: federal year {lodging.fiscalYear}. Van rental: {formatMonth(van.asOf)}. They are United States figures, used on tours kept in
+          dollars only.
         </p>
       </section>
 

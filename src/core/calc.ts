@@ -5,7 +5,7 @@
 import { addDays, cityName, daysBetween } from './dates';
 import { currencyOf, floorToDollar, formatMoney, formatNumber, formatPercent, percentOf, roundToDollar } from './money';
 import { guaranteedMinimum, payout } from './payout';
-import { peopleOn, tourDays, tourRates } from './rates';
+import { peopleOn, tourDays, tourRates, type Rate } from './rates';
 import { legInto, routeMiles, unknownLegs } from './route';
 import type { Commission, Currency, ExtraLine, Money, Tour, TourDate } from './types';
 import { formatDistance, formatMileage, fuelPriceIn, UNIT_WORDS, unitsOf } from './units';
@@ -106,6 +106,26 @@ function commissionOnDate(c: Commission, date: TourDate): { plan: Money; now: Mo
 function merchCostOnDate(rate: number, date: TourDate): { plan: Money; now: Money } {
   if (date.kind !== 'show') return { plan: 0, now: 0 };
   return { plan: percentOf(rate, date.merch.plan), now: percentOf(rate, track(date.merch.plan, date.merch.actual)) };
+}
+
+// ---------- figures the plan is waiting for ----------
+
+const missing = (r: Rate) => r.noEstimate === true && !r.typed;
+
+/** No room is planned on any night, and there is no figure to plan one from. */
+const lodgingMissing = (tour: Tour, lodging: Rate) => missing(lodging) && tour.dates.every((d) => d.lodging.plan === 0);
+
+/**
+ * What the plan counts as 0 only because nobody has typed it: the figures a
+ * tour that is not in dollars has no estimate for. Empty for a dollar tour.
+ */
+export function missingFigures(tour: Tour): string[] {
+  const rates = tourRates(tour);
+  return [
+    ...(missing(rates.vanDailyRate) ? ['the van daily rate'] : []),
+    ...(missing(rates.gasPrice) ? ['the fuel price'] : []),
+    ...(lodgingMissing(tour, rates.lodgingPerNight) ? ['lodging'] : []),
+  ];
 }
 
 // ---------- the budget: one list of lines, each with plan and now ----------
@@ -254,8 +274,9 @@ export function budget(tour: Tour): Budget {
   const v = tour.vehicle;
   const planVan = roundToDollar(rates.vanDailyRate.value * rates.vanDays.value);
   // A van that is not rented, with nothing paid for one, has no rental line.
+  // A rate nobody has typed yet is not that: the line stays, and says so.
   const vehicle: BudgetLine[] =
-    planVan === 0 && v.actual === undefined
+    planVan === 0 && v.actual === undefined && !missing(rates.vanDailyRate)
       ? []
       : [
           {
@@ -265,7 +286,7 @@ export function budget(tour: Tour): Budget {
             direction: 'out',
             plan: planVan,
             now: trackTourWide(planVan, v.actual, v.final),
-            how: `${money(rates.vanDailyRate.value)}${rates.vanDailyRate.estimated ? ' (estimate)' : ''} × ${plural(rates.vanDays.value, 'day')}`,
+            how: missing(rates.vanDailyRate) ? 'No daily rate yet: type it in Rates' : `${money(rates.vanDailyRate.value)}${rates.vanDailyRate.estimated ? ' (estimate)' : ''} × ${plural(rates.vanDays.value, 'day')}`,
             progress: v.actual === undefined ? 'Not paid yet' : `${money(v.actual)} paid${v.final ? ', final' : ' so far'}`,
           },
         ];
@@ -275,8 +296,9 @@ export function budget(tour: Tour): Budget {
   // The same sum either way: miles ÷ mpg, or kilometres × litres per 100 km.
   const units = unitsOf(tour);
   const estimate = rates.gasPrice.estimated ? ' (estimate)' : '';
-  const fuelSum =
-    units === 'metric'
+  const fuelSum = missing(rates.gasPrice)
+    ? `${formatDistance(routeMiles(tour), units)}. No fuel price yet: type it in Rates`
+    : units === 'metric'
       ? `${formatDistance(routeMiles(tour), units)} × ${formatMileage(rates.mpg.value, units)} × ${money(fuelPriceIn(rates.gasPrice.value, units))} a litre${estimate}`
       : `${formatNumber(routeMiles(tour))} mi ÷ ${formatNumber(rates.mpg.value)} mpg × ${money(rates.gasPrice.value)}${estimate}`;
   const fuel: BudgetLine = {
@@ -304,9 +326,11 @@ export function budget(tour: Tour): Budget {
     direction: 'out',
     plan: sum(tour.dates.map((d) => d.lodging.plan)),
     now: sum(tour.dates.map((d) => track(d.lodging.plan, d.lodging.actual))),
-    how: lodgingUniform
-      ? `${money(rates.lodgingPerNight.value)}${rates.lodgingPerNight.estimated ? ' (estimate)' : ''} × ${plural(plannedNights.length, 'night')}`
-      : plural(plannedNights.length, 'night') + (rates.lodgingPerNight.estimated && plannedNights.length ? ', each estimated for its city' : ''),
+    how: lodgingMissing(tour, rates.lodgingPerNight)
+      ? 'No lodging figure yet: type it in Rates'
+      : lodgingUniform
+        ? `${money(rates.lodgingPerNight.value)}${rates.lodgingPerNight.estimated ? ' (estimate)' : ''} × ${plural(plannedNights.length, 'night')}`
+        : plural(plannedNights.length, 'night') + (rates.lodgingPerNight.estimated && plannedNights.length ? ', each estimated for its city' : ''),
     progress: `${nightsIn} of ${plural(nights.length, 'night')} in`,
   };
 

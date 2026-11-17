@@ -10,6 +10,8 @@ import {
   formatDistance,
   formatRange,
   lineDiff,
+  listed,
+  missingFigures,
   netDiff,
   newId,
   revenueDiff,
@@ -166,9 +168,11 @@ function AddLine({ direction }: { direction: 'in' | 'out' }) {
   );
 }
 
-function Plan({ b }: { b: BudgetData }) {
+function Plan({ b, tour }: { b: BudgetData; tour: Tour }) {
   const money = useMoney();
   const net = b.plan.net;
+  const missing = missingFigures(tour);
+  const them = missing.length === 1 ? 'it' : 'them';
   return (
     <>
       <div className="headline">
@@ -184,6 +188,12 @@ function Plan({ b }: { b: BudgetData }) {
           </span>
         </p>
       </div>
+
+      {missing.length > 0 && (
+        <p className="note bad" role="status" style={{ marginTop: 12 }}>
+          Not in this plan yet: {listed(missing)}. There is no estimate for {them} outside the United States, so the plan counts {them} as 0. Type {them} under Rates.
+        </p>
+      )}
 
       <section className="section" aria-labelledby="plan-revenue">
         <div className="section-head">
@@ -561,7 +571,7 @@ export function Budget({ view }: { view: View }) {
       <Back to="/tours">Tours</Back>
       <TourHeader tour={tour} />
       <Switch view={view} />
-      {view === 'plan' ? <Plan b={b} /> : view === 'actuals' ? <Actuals b={b} tour={tour} today={today} /> : <Split b={b} tour={tour} />}
+      {view === 'plan' ? <Plan b={b} tour={tour} /> : view === 'actuals' ? <Actuals b={b} tour={tour} today={today} /> : <Split b={b} tour={tour} />}
       {tour.demoToday ? (
         <p className="sample">Sample tour. Figures are invented, and today is set to {formatDay(tour.demoToday)} so it reads as mid-run.</p>
       ) : (
