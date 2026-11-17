@@ -2,10 +2,10 @@
 // against today. Not in the mockups; a plain list in the same ledger style.
 
 import { useState } from 'react';
-import { budget, currentEstimates, formatMonth, formatRange, SAMPLE_TOUR_IDS, showDates, tourPhase, type Tour, type TourPhase } from '../core';
+import { budget, currentEstimates, formatMonth, formatRange, localToday, SAMPLE_TOUR_IDS, showDates, tourPhase, type Tour, type TourPhase } from '../core';
 import { Amount } from '../components';
 import { href } from '../router';
-import { todayFor, UNREADABLE_KEY, useTours } from '../store';
+import { backupOf, readSaved, todayFor, UNREADABLE_KEY, useTours } from '../store';
 
 const GROUPS: [TourPhase, string][] = [
   ['setup', 'Setting up'],
@@ -82,6 +82,116 @@ function TourRow({ tour, phase }: { tour: Tour; phase: TourPhase }) {
   );
 }
 
+const count = (n: number) => `${n} ${n === 1 ? 'tour' : 'tours'}`;
+
+/** A backup file chosen to load, read but not yet taken. */
+interface Picked {
+  tours: Tour[];
+  /** How many of them are on the device already, and would be replaced. */
+  held: number;
+  /** True when some tours in the file could not be read and are left out. */
+  partial: boolean;
+}
+
+/**
+ * Tours live on one device, so a file is the only copy anywhere else: it is
+ * the way to keep them safe, move them to a new phone or hand them to a
+ * bandmate. Loading asks first, since a tour already here is replaced.
+ */
+function Backup() {
+  const { tours, loadBackup } = useTours();
+  const [picked, setPicked] = useState<Picked | 'unreadable'>();
+  const [loaded, setLoaded] = useState(0);
+
+  const save = () => {
+    const url = URL.createObjectURL(new Blob([backupOf(tours)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `tourmo-backup-${localToday()}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    setLoaded(0);
+    const result = readSaved(await file.text().catch(() => ''));
+    if (!result || result.data.tours.length === 0) return setPicked('unreadable');
+    const have = new Set(tours.map((t) => t.id));
+    setPicked({ tours: result.data.tours, held: result.data.tours.filter((t) => have.has(t.id)).length, partial: !result.complete });
+  };
+
+  return (
+    <section className="section" aria-labelledby="tours-backup">
+      <div className="section-head">
+        <h2 className="heading" id="tours-backup">
+          Backup
+        </h2>
+      </div>
+      <p className="note" style={{ marginTop: 8 }}>
+        Your tours are kept on this device only. A backup file holds all of them: keep it somewhere safe, or send it to a bandmate to load into the app on their own phone.
+      </p>
+      <button className="btn quiet" type="button" onClick={save}>
+        Save a backup file
+      </button>
+      <label className="btn quiet">
+        Load a backup file
+        <input
+          className="sr-only"
+          type="file"
+          accept="application/json,.json"
+          onChange={(e) => {
+            void pick(e.target.files?.[0]);
+            e.target.value = ''; // so the same file can be chosen again
+          }}
+        />
+      </label>
+
+      {picked === 'unreadable' && (
+        <p className="note bad" role="alert" style={{ marginTop: 12 }}>
+          That file is not a tourmo backup, so nothing was loaded.
+        </p>
+      )}
+      {picked && picked !== 'unreadable' && (
+        <div role="alert">
+          <p className="note" style={{ marginTop: 12 }}>
+            The file holds {count(picked.tours.length)}.{' '}
+            {picked.held === 0
+              ? 'None of them is on this device yet, so they are added.'
+              : picked.held === picked.tours.length
+                ? "All of them are on this device already and are replaced by the file's copy."
+                : `${picked.held} of them ${picked.held === 1 ? 'is' : 'are'} on this device already and ${picked.held === 1 ? 'is' : 'are'} replaced by the file's copy. The rest are added.`}{' '}
+            No other tour is touched.
+          </p>
+          {picked.partial && <p className="note bad">Some tours in the file could not be read and are left out.</p>}
+          <div className="btn-row">
+            <button className="btn quiet" type="button" onClick={() => setPicked(undefined)}>
+              Cancel
+            </button>
+            <button
+              className="btn"
+              type="button"
+              style={{ marginTop: 16, minHeight: 48 }}
+              onClick={() => {
+                loadBackup(picked.tours);
+                setLoaded(picked.tours.length);
+                setPicked(undefined);
+              }}
+            >
+              Load {count(picked.tours.length)}
+            </button>
+          </div>
+        </div>
+      )}
+      {loaded > 0 && (
+        <p className="note" role="status" style={{ marginTop: 12 }}>
+          Loaded {count(loaded)} from the file.
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function Tours() {
   const { tours, setAside, figures, restoreSamples } = useTours();
   const { gas, lodging, van } = currentEstimates();
@@ -93,7 +203,7 @@ export function Tours() {
       <header className="screen-head">
         <h1 className="title">Tours</h1>
         <p className="note">
-          {tours.length} {tours.length === 1 ? 'tour' : 'tours'} on this device.
+          {count(tours.length)} on this device.
         </p>
       </header>
 
@@ -131,6 +241,8 @@ export function Tours() {
       <a className="btn" href={href('/tours/new')}>
         Plan a new tour
       </a>
+
+      <Backup />
 
       <section className="section" aria-labelledby="tours-figures">
         <div className="section-head">

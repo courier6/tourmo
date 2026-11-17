@@ -9,9 +9,12 @@ import {
   budget,
   carryOver,
   currentEstimates,
+  dateAgainstPlan,
+  dateMerchCost,
   dollars,
   ESTIMATES,
   finishSetup,
+  foodPlan,
   fuelPlan,
   gasPriceIn,
   isEstimates,
@@ -172,6 +175,25 @@ describe('van', () => {
   });
 });
 
+describe('a van that is not rented', () => {
+  const vanLine = (t: Tour) => budget(t).expenses.find((l) => l.kind === 'vehicle');
+
+  it('has no rental line, and fuel is planned all the same', () => {
+    const t = run();
+    expect(vanLine(t)?.plan).toBeGreaterThan(0);
+    t.vehicle.dailyRate = 0;
+    expect(vanLine(t)).toBeUndefined();
+    expect(budget(t).expenses.find((l) => l.kind === 'fuel')?.plan).toBeGreaterThan(0);
+  });
+
+  it('shows the line again once something is paid for a van', () => {
+    const t = run();
+    t.vehicle.dailyRate = 0;
+    t.vehicle.actual = $(180);
+    expect(vanLine(t)).toMatchObject({ plan: 0, now: $(180) });
+  });
+});
+
 describe('the plan from estimates', () => {
   it('has no zeros where a figure can be estimated', () => {
     const t = run();
@@ -204,7 +226,9 @@ describe('the plan from estimates', () => {
     expect(t.lodgingPerNightDefault).toBe($(230));
     expect(t.fuel.mpg).toBe(17);
     expect(t.vehicle.days).toBeUndefined(); // days stay worked out from the dates
-    expect([...(t.estimated ?? [])].sort()).toEqual(['gasPrice', 'lodgingPerNight', 'vanDailyRate']);
+    expect(t.perDiem).toBe($(20));
+    expect(t.merchCostRate).toBe(0.4);
+    expect([...(t.estimated ?? [])].sort()).toEqual(['gasPrice', 'lodgingPerNight', 'merchCost', 'perDiem', 'vanDailyRate']);
 
     const later: Estimates = { ...data, gas: { ...data.gas, us: 6, regions: {}, states: {} }, van: { ...data.van, dailyRate: 400 } };
     const rates = tourRates(t, later);
@@ -263,6 +287,87 @@ describe('each night planned for its own city', () => {
   });
 });
 
+describe('people and food', () => {
+  const foodLine = (t: Tour) => budget(t).expenses.find((l) => l.kind === 'food');
+
+  it('plans food for everyone, every day from the first date to the last', () => {
+    const t = run();
+    expect(tourRates(t, data)).toMatchObject({ people: 4, perDiem: { value: $(20), typed: false, estimated: true } });
+    expect(foodPlan(t)).toBe($(240)); // $20 × 4 people × 3 days
+    t.people = 5;
+    t.perDiem = $(25);
+    expect(foodPlan(t)).toBe($(375));
+    expect(foodLine(t)).toMatchObject({ plan: $(375), how: '$25 × 5 people × 3 days' });
+  });
+
+  it('has no food line when the per diem is 0 and nothing was spent', () => {
+    const t = run();
+    t.perDiem = 0;
+    expect(foodLine(t)).toBeUndefined();
+    t.dates[1].food = $(35);
+    expect(foodLine(t)).toMatchObject({ plan: 0, now: $(35) });
+  });
+
+  it('counts food as the larger of plan and spent until spending is finished', () => {
+    const t = run();
+    t.dates[0].food = $(60);
+    t.dates[1].food = $(95);
+    expect(foodLine(t)).toMatchObject({ plan: $(240), now: $(240), progress: '$155 spent, $85 left' });
+    t.foodFinal = true;
+    expect(foodLine(t)?.now).toBe($(155));
+    t.dates[2].food = $(120);
+    expect(foodLine(t)).toMatchObject({ now: $(275), progress: '$275 spent, $35 over' });
+  });
+
+  it('plans a room for every two people, unless the band set the rooms', () => {
+    const t = run();
+    expect(tourRates(t, data).rooms).toBe(2);
+    t.people = 5;
+    expect(tourRates(t, data).rooms).toBe(3);
+    expect(lodgingFor(t, t.dates[2], data)).toBe($(340)); // 3 rooms at the standard 113, rounded up
+    t.lodgingRooms = 1;
+    expect(tourRates(t, data).rooms).toBe(1);
+  });
+});
+
+describe('merch costs', () => {
+  const costLine = (t: Tour) => budget(t).expenses.find((l) => l.kind === 'merchCost');
+  const selling = (): Tour => {
+    const t = run();
+    t.merchPerShowDefault = $(300);
+    finishSetup(t);
+    return t;
+  };
+
+  it('are a share of what merch sells, estimated at 40% until the band sets its own', () => {
+    const t = selling();
+    expect(costLine(t)).toMatchObject({ label: 'Merch costs, 40%', plan: $(360), now: $(360), how: '40% (estimate) of $900 merch sales' });
+    t.merchCostRate = 0.25;
+    t.estimated = t.estimated?.filter((k) => k !== 'merchCost');
+    expect(costLine(t)).toMatchObject({ label: 'Merch costs, 25%', plan: $(225), how: '25% of $900 merch sales' });
+  });
+
+  it('follow what was really sold', () => {
+    const t = selling();
+    t.dates[0].merch.actual = $(500);
+    expect(costLine(t)).toMatchObject({ plan: $(360), now: $(440), progress: '40% of $1,100' });
+    expect(dateMerchCost(t, t.dates[0])).toMatchObject({ plan: $(120), actual: $(200) });
+    expect(dateMerchCost(t, t.dates[1])).toMatchObject({ plan: $(120), actual: undefined });
+    // $200 more sold, less the $80 more it cost.
+    expect(dateAgainstPlan(t, t.dates[0])).toMatchObject({ vsPlan: $(120), hasActuals: true });
+  });
+
+  it('have no line when the share is 0 or the tour plans no merch', () => {
+    const t = selling();
+    t.merchCostRate = 0;
+    expect(costLine(t)).toBeUndefined();
+    expect(dateMerchCost(t, t.dates[0])).toBeUndefined();
+    const none = run();
+    finishSetup(none);
+    expect(costLine(none)).toBeUndefined();
+  });
+});
+
 describe('fresher figures', () => {
   afterEach(resetFigures);
 
@@ -318,6 +423,10 @@ describe('starting from the last tour', () => {
     last.vehicle.dailyRate = $(140);
     last.merchPerShowDefault = $(200);
     last.lodgingRooms = 3;
+    last.people = 5;
+    last.perDiem = $(25);
+    last.merchCostRate = 0.3;
+    last.splitBetween = 4;
     last.dates[1].merch.actual = $(260);
     last.dates[2].merch.actual = $(331);
     keepEstimates(last, data); // gas, mileage and lodging were estimates
@@ -338,6 +447,10 @@ describe('starting from the last tour', () => {
       merchPerShow: $(295), // what the two shows really sold, to the nearest $5
       lodgingPerNight: undefined,
       lodgingRooms: 3,
+      people: 5,
+      perDiem: $(25),
+      merchCostRate: 0.3,
+      splitBetween: 4,
     });
 
     const next = blankTour('t9', 'Summer run', 'Dallas, TX', undefined, carried);

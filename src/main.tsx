@@ -24,3 +24,11 @@ createRoot(document.getElementById('root')!).render(
     </TourProvider>
   </StrictMode>,
 );
+
+// The built app keeps a copy of itself on the device, so it opens with no
+// signal. Not in development, where it would serve stale files.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  void navigator.serviceWorker.register('./sw.js').catch(() => {
+    // Without it the app still works; it only needs a signal to open.
+  });
+}

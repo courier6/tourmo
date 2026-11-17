@@ -26,6 +26,7 @@ import {
   settledWithoutPayout,
   SHORTHAND_EXAMPLES,
   showActual,
+  splitFor,
   toOffer,
 } from './index';
 
@@ -406,5 +407,65 @@ describe('safe to spend', () => {
     expect(safeToSpend(tour, '2027-03-07')).toEqual({ perDay: $(1151), daysLeft: 3 });
     expect(safeToSpend(tour, '2027-01-01')).toEqual({ perDay: $(575), daysLeft: 6 });
     expect(safeToSpend(tour, '2027-03-10')).toBeUndefined();
+  });
+});
+
+describe('tour-wide income', () => {
+  const supported = () => {
+    const tour = seedTour();
+    tour.lines.push({ id: 'support', label: 'Tour support', direction: 'in', plan: $(1500) });
+    return tour;
+  };
+  const line = (b: ReturnType<typeof budget>) => b.revenue.find((l) => l.id === 'line:support');
+
+  it('is a revenue line of its own, so it can be opened and changed', () => {
+    const b = budget(supported());
+    expect(line(b)).toMatchObject({ kind: 'extra', direction: 'in', label: 'Tour support', plan: $(1500), now: $(1500), progress: 'Not received yet' });
+    expect(b.plan.revenue).toBe(budget(seedTour()).plan.revenue + $(1500));
+    // Income added on a date stays in the one line it had.
+    expect(b.revenue.find((l) => l.id === 'additional')?.plan).toBe($(150));
+  });
+
+  it('counts at its plan until what was received is final', () => {
+    const tour = supported();
+    tour.lines.at(-1)!.actual = $(1000);
+    expect(line(budget(tour))).toMatchObject({ now: $(1500), progress: '$1,000 received so far' });
+    tour.lines.at(-1)!.final = true;
+    expect(line(budget(tour))).toMatchObject({ now: $(1000), progress: '$1,000 received, final' });
+  });
+
+  it('leaves the line for income added on dates out when there is none', () => {
+    const tour = seedTour();
+    tour.dates.forEach((d) => (d.lines = []));
+    expect(budget(tour).revenue.map((l) => l.id)).toEqual(['shows', 'merch']);
+  });
+});
+
+describe('the split', () => {
+  it('shares the net evenly between everyone on the road, in whole dollars', () => {
+    const tour = seedTour(); // tracking to $3,454, with two of five shows not settled
+    expect(splitFor(tour)).toEqual({ net: $(3454), putIn: 0, paidBack: 0, toShare: $(3454), ways: 4, each: $(863), left: $(2), open: 2 });
+    tour.people = 6;
+    expect(splitFor(tour)).toMatchObject({ ways: 6, each: $(575), left: $(4) });
+    tour.splitBetween = 3; // two of the six are paid a fee
+    expect(splitFor(tour)).toMatchObject({ ways: 3, each: $(1151), left: $(1) });
+  });
+
+  it('pays back what was put in without taking it out of the net', () => {
+    const tour = seedTour();
+    tour.putIn = [
+      { id: 'a', who: 'Sam', amount: $(500) },
+      { id: 'b', who: 'The label', amount: $(1000) },
+    ];
+    expect(splitFor(tour)).toMatchObject({ putIn: $(1500), paidBack: $(1500), toShare: $(3454), each: $(863) });
+  });
+
+  it('takes a loss out of what was put in, and shares nothing', () => {
+    const tour = seedTour();
+    tour.lines.push({ id: 'repair', label: 'Engine repair', direction: 'out', plan: 0, actual: $(4000) });
+    tour.putIn = [{ id: 'a', who: 'Sam', amount: $(1000) }];
+    expect(splitFor(tour)).toMatchObject({ net: $(-546), paidBack: $(454), toShare: 0, each: 0, left: 0 });
+    tour.putIn = [{ id: 'a', who: 'Sam', amount: $(300) }];
+    expect(splitFor(tour).paidBack).toBe(0);
   });
 });

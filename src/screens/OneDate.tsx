@@ -2,8 +2,11 @@ import { useState } from 'react';
 import {
   dateAgainstPlan,
   dateCommissions,
+  dateMerchCost,
   expenseDiff,
   explainPayout,
+  foodPlan,
+  foodSpent,
   formatDay,
   formatMoney,
   formatNumber,
@@ -17,6 +20,7 @@ import {
   settledWithoutPayout,
   showActual,
   showPlan,
+  tourRates,
   type Diff,
   type Money,
   type Tour,
@@ -99,8 +103,11 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
   const paid = showActual(date);
   const result = dateAgainstPlan(tour, date);
   const commissions = dateCommissions(tour, date);
+  const merchCost = dateMerchCost(tour, date);
   const fuelLeft = fuelPlan(tour) - fuelSpent(tour);
   const drive = fuelForDrive(tour, date);
+  const foodLeft = foodPlan(tour) - foodSpent(tour);
+  const { perDiem, people } = tourRates(tour);
   const summary = netDiff(0, result.vsPlan);
   const extrasIn = date.lines.filter((l) => l.direction === 'in');
   const extrasOut = date.lines.filter((l) => l.direction === 'out');
@@ -234,6 +241,22 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
           <MoneyInput id="fuel" value={date.fuelFillUps.length ? fuelOnDate(date) : undefined} onChange={(v) => edit((d) => (d.fuelFillUps = v === undefined ? [] : [v]))} />
         </div>
 
+        <div className="pa-row">
+          <div className="name">
+            <label htmlFor="food">Food and per diems</label>
+            {perDiem.value > 0 && (
+              <span className="note">
+                About {formatMoney(perDiem.value * people)} a day for {people} {people === 1 ? 'person' : 'people'}
+              </span>
+            )}
+            <span className="note">{foodLeft >= 0 ? `${formatMoney(foodLeft)} left in the tour food budget` : `Tour food budget is ${formatMoney(-foodLeft)} over`}</span>
+          </div>
+          <div className="plan">
+            <NoPlan />
+          </div>
+          <MoneyInput id="food" value={date.food} onChange={(v) => edit((d) => (d.food = v))} />
+        </div>
+
         {commissions.map((c) => (
           <div className="pa-row" key={c.id}>
             <div className="name">
@@ -247,6 +270,20 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
             <div className="actual">{c.actual === undefined ? <NoPlan /> : <Amount value={c.actual} />}</div>
           </div>
         ))}
+
+        {merchCost && (
+          <div className="pa-row">
+            <div className="name">
+              <span className="label">{merchCost.label}</span>
+              <span className="note">Worked out from the merch sold</span>
+              {merchCost.actual !== undefined && <VsPlan diff={expenseDiff(merchCost.plan, merchCost.actual)} />}
+            </div>
+            <div className="plan">
+              <Amount value={merchCost.plan} />
+            </div>
+            <div className="actual">{merchCost.actual === undefined ? <NoPlan /> : <Amount value={merchCost.actual} />}</div>
+          </div>
+        )}
 
         {extrasOut.map((l) => (
           <div className="pa-row" key={l.id}>
@@ -284,7 +321,7 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
                 ))}
               </ul>
             )}
-            <p className="sub">Fuel is left out here. It counts against the tour-wide fuel budget.</p>
+            <p className="sub">Fuel and food are left out here. They count against their tour-wide budgets.</p>
           </>
         ) : (
           <p className="verdict" style={{ marginTop: 4 }}>

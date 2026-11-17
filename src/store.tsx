@@ -12,15 +12,17 @@ const KEY = 'tour-money/v1';
 /** Saved data that could not be read is copied here before anything replaces it. */
 export const UNREADABLE_KEY = 'tour-money/unreadable';
 
+const VERSION = 5;
+
 interface Stored {
-  version: 3;
+  version: typeof VERSION;
   tours: Tour[];
   /** The tour the Budget, Dates and Rates screens show. Empty when none is open. */
   activeTourId: string;
 }
 
 function fresh(): Stored {
-  return { version: 3, tours: seedTours(), activeTourId: '' };
+  return { version: VERSION, tours: seedTours(), activeTourId: '' };
 }
 
 /** Version 1 held the Spring run sample only. Version 2 adds the finished samples. */
@@ -36,7 +38,7 @@ function fromVersion1(data: { tours: Tour[]; activeTourId: string }): { tours: T
  * that only meant "not entered" are cleared: van days and mileage on every
  * tour of the band's own, and every rate on a tour still being set up.
  */
-function fromVersion2(data: { tours: Tour[]; activeTourId: string }): Stored {
+function fromVersion2(data: { tours: Tour[]; activeTourId: string }): { tours: Tour[]; activeTourId: string } {
   const tours = data.tours.map((tour) => {
     if (SAMPLE_TOUR_IDS.includes(tour.id)) return tour;
     const t = structuredClone(tour);
@@ -50,7 +52,27 @@ function fromVersion2(data: { tours: Tour[]; activeTourId: string }): Stored {
     }
     return t;
   });
-  return { version: 3, tours, activeTourId: data.activeTourId };
+  return { tours, activeTourId: data.activeTourId };
+}
+
+/**
+ * Version 4 plans food. A tour set up before then was planned without it, and
+ * a plan must not grow a cost after the fact, so each of those is given a per
+ * diem of 0: a real figure, which Rates can clear to take the estimate. A tour
+ * still being set up is left to be estimated.
+ */
+function fromVersion3(data: { tours: Tour[]; activeTourId: string }): { tours: Tour[]; activeTourId: string } {
+  const tours = data.tours.map((tour) => (tour.setup || tour.perDiem !== undefined ? tour : { ...tour, perDiem: 0 }));
+  return { tours, activeTourId: data.activeTourId };
+}
+
+/**
+ * Version 5 plans a share of merch sales as its cost. As with food, a tour
+ * set up before then keeps the plan it had: a share of 0.
+ */
+function fromVersion4(data: { tours: Tour[]; activeTourId: string }): { tours: Tour[]; activeTourId: string } {
+  const tours = data.tours.map((tour) => (tour.setup || tour.merchCostRate !== undefined ? tour : { ...tour, merchCostRate: 0 }));
+  return { tours, activeTourId: data.activeTourId };
 }
 
 interface Loaded {
@@ -68,13 +90,16 @@ interface Loaded {
 export function readSaved(text: string): { data: Stored; complete: boolean } | undefined {
   try {
     const saved = JSON.parse(text) as { version?: unknown; tours?: unknown; activeTourId?: unknown } | null;
-    if (!saved || !Array.isArray(saved.tours) || ![1, 2, 3].includes(saved.version as number)) return undefined;
+    if (!saved || !Array.isArray(saved.tours) || ![1, 2, 3, 4, VERSION].includes(saved.version as number)) return undefined;
     const tours = saved.tours.filter(isTour);
     for (const tour of tours) tour.dates.sort((a, b) => a.date.localeCompare(b.date));
     const activeTourId = typeof saved.activeTourId === 'string' ? saved.activeTourId : '';
-    const data: Stored =
-      saved.version === 3 ? { version: 3, tours, activeTourId } : fromVersion2(saved.version === 1 ? fromVersion1({ tours, activeTourId }) : { tours, activeTourId });
-    return { data, complete: tours.length === saved.tours.length };
+    let read = { tours, activeTourId };
+    if (saved.version === 1) read = fromVersion1(read);
+    if ((saved.version as number) <= 2) read = fromVersion2(read);
+    if ((saved.version as number) <= 3) read = fromVersion3(read);
+    if ((saved.version as number) <= 4) read = fromVersion4(read);
+    return { data: { version: VERSION, ...read }, complete: tours.length === saved.tours.length };
   } catch {
     return undefined;
   }
@@ -140,6 +165,22 @@ function save(data: Stored): boolean {
   } catch {
     return false;
   }
+}
+
+/** What a backup file holds: every tour, as it is saved on the device, with none open. */
+export function backupOf(tours: Tour[]): string {
+  const data: Stored = { version: VERSION, tours, activeTourId: '' };
+  return JSON.stringify(data);
+}
+
+/**
+ * The tours of a backup laid over the ones held. A tour in both is replaced
+ * by the backup's copy; every other tour held is kept, so loading a backup
+ * never removes a tour.
+ */
+export function withBackup(held: Tour[], backup: Tour[]): Tour[] {
+  const incoming = new Set(backup.map((t) => t.id));
+  return [...held.filter((t) => !incoming.has(t.id)), ...backup];
 }
 
 /** Today for a tour. A sample tour can pin it so it reads as mid-run. */
@@ -225,6 +266,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
     setData((prev) => ({ ...prev, tours: [...seedTours(), ...prev.tours.filter((t) => !SAMPLE_TOUR_IDS.includes(t.id))] }));
   }, []);
 
+  const loadBackup = useCallback((tours: Tour[]) => {
+    setData((prev) => withDrives({ ...prev, tours: withBackup(prev.tours, structuredClone(tours)) }));
+  }, []);
+
   const value = useMemo<Store>(
     () => ({
       tours: data.tours,
@@ -237,9 +282,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
       deleteTour,
       update,
       restoreSamples,
+      loadBackup,
     }),
     // `lookups` is listed so that a new figure reaches every screen.
-    [data, loaded, unsaved, lookups, openTour, createTour, deleteTour, update, restoreSamples],
+    [data, loaded, unsaved, lookups, openTour, createTour, deleteTour, update, restoreSamples, loadBackup],
   );
 
   // Real road miles for every drive of the open tour that is still an estimate.

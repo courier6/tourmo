@@ -20,6 +20,7 @@ import {
   showDates,
   settledWithoutPayout,
   showPlan,
+  splitFor,
   STATUS_LABEL,
   type Budget as BudgetData,
   type BudgetLine,
@@ -27,7 +28,7 @@ import {
   type Tour,
   type TourDate,
 } from '../core';
-import { Amount, Back, DiffText, MoneyField, TextField } from '../components';
+import { Amount, Back, DiffText, MoneyField, NumberField, TextField } from '../components';
 import { href } from '../router';
 import { useTour } from '../store';
 
@@ -63,7 +64,9 @@ function TourHeader({ tour }: { tour: Tour }) {
   );
 }
 
-function Switch({ view }: { view: 'plan' | 'actuals' }) {
+type View = 'plan' | 'actuals' | 'split';
+
+function Switch({ view }: { view: View }) {
   return (
     <nav className="switch" aria-label="Budget view">
       <a href={href('/budget/plan')} aria-current={view === 'plan' ? 'page' : undefined}>
@@ -71,6 +74,9 @@ function Switch({ view }: { view: 'plan' | 'actuals' }) {
       </a>
       <a href={href('/budget/actuals')} aria-current={view === 'actuals' ? 'page' : undefined}>
         Actuals
+      </a>
+      <a href={href('/budget/split')} aria-current={view === 'split' ? 'page' : undefined}>
+        Split
       </a>
     </nav>
   );
@@ -107,8 +113,10 @@ function PlanRow({ line }: { line: BudgetLine }) {
   );
 }
 
-function AddExpense() {
+/** Adds a tour-wide line to the plan: an expense, or income from outside the shows. */
+function AddLine({ direction }: { direction: 'in' | 'out' }) {
   const { update } = useTour();
+  const out = direction === 'out';
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState('');
   const [amount, setAmount] = useState<Money | undefined>();
@@ -116,7 +124,7 @@ function AddExpense() {
   if (!open) {
     return (
       <button className="btn quiet" type="button" onClick={() => setOpen(true)}>
-        Add an expense
+        {out ? 'Add an expense' : 'Add other income'}
       </button>
     );
   }
@@ -132,13 +140,18 @@ function AddExpense() {
         e.preventDefault();
         if (!label.trim()) return;
         update((t) => {
-          t.lines.push({ id: newId('line'), label: label.trim(), direction: 'out', plan: amount ?? 0 });
+          t.lines.push({ id: newId('line'), label: label.trim(), direction, plan: amount ?? 0 });
         });
         close();
       }}
     >
-      <TextField label="What is it for?" value={label} onChange={setLabel} />
-      <MoneyField label="Planned amount" value={amount} onChange={setAmount} note="A tour-wide cost, such as insurance or a trailer." />
+      <TextField label={out ? 'What is it for?' : 'What is it?'} value={label} onChange={setLabel} />
+      <MoneyField
+        label="Planned amount"
+        value={amount}
+        onChange={setAmount}
+        note={out ? "A tour-wide cost, such as a hired player's fee, insurance or a trailer." : 'Money for the tour that is not from a show or merch, such as tour support from a label.'}
+      />
       <div className="btn-row">
         <button className="btn quiet" type="button" onClick={close}>
           Cancel
@@ -181,6 +194,7 @@ function Plan({ b }: { b: BudgetData }) {
             <PlanRow key={l.id} line={l} />
           ))}
         </ul>
+        <AddLine direction="in" />
       </section>
 
       <section className="section" aria-labelledby="plan-expenses">
@@ -195,7 +209,7 @@ function Plan({ b }: { b: BudgetData }) {
             <PlanRow key={l.id} line={l} />
           ))}
         </ul>
-        <AddExpense />
+        <AddLine direction="out" />
       </section>
     </>
   );
@@ -204,7 +218,7 @@ function Plan({ b }: { b: BudgetData }) {
 // ---------- Actuals ----------
 
 function LedgerRow({ line }: { line: BudgetLine }) {
-  const to = line.kind === 'extra' ? lineLink(line) : line.kind === 'vehicle' || line.kind === 'fuel' ? '/rates' : undefined;
+  const to = line.kind === 'extra' ? lineLink(line) : line.kind === 'vehicle' || line.kind === 'fuel' || line.kind === 'food' || line.kind === 'merchCost' ? '/rates' : undefined;
   return (
     <tr>
       <th scope="row">
@@ -265,7 +279,7 @@ function Actuals({ b, tour, today }: { b: BudgetData; tour: Tour; today: string 
       <div className="headline">
         <p className="label">Now tracking to</p>
         <p className="figure">{formatMoney(b.now.net)}</p>
-        <p className={`verdict ${diff.tone === 'flat' ? '' : diff.tone}`}>{diff.tone === 'flat' ? 'On plan' : `${diff.text} of plan`}</p>
+        <p className={`verdict ${diff.tone === 'flat' ? '' : diff.tone}`}>{diff.tone === 'flat' ? 'On plan' : diff.tone === 'good' ? `${diff.text} of plan` : `${diff.text} plan`}</p>
         <p className="label" style={{ marginTop: 2 }}>
           {b.settledCount} of {b.showCount} shows settled
           {unpaid > 0 && `, ${unpaid} with no payout entered and counted at plan`}
@@ -355,7 +369,181 @@ function Actuals({ b, tour, today }: { b: BudgetData; tour: Tour; today: string 
   );
 }
 
-export function Budget({ view }: { view: 'plan' | 'actuals' }) {
+// ---------- Split ----------
+
+function AddPutIn() {
+  const { update } = useTour();
+  const [open, setOpen] = useState(false);
+  const [who, setWho] = useState('');
+  const [amount, setAmount] = useState<Money | undefined>();
+
+  if (!open) {
+    return (
+      <button className="btn quiet" type="button" onClick={() => setOpen(true)}>
+        Add money to pay back
+      </button>
+    );
+  }
+  const close = () => {
+    setOpen(false);
+    setWho('');
+    setAmount(undefined);
+  };
+  return (
+    <form
+      className="inline-form"
+      aria-label="Add money to pay back"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!who.trim() || !amount) return;
+        update((t) => {
+          (t.putIn ??= []).push({ id: newId('in'), who: who.trim(), amount });
+        });
+        close();
+      }}
+    >
+      <TextField label="Who put it in?" value={who} onChange={setWho} note="A name, or the label." />
+      <MoneyField label="Amount" value={amount} onChange={setAmount} />
+      <div className="btn-row">
+        <button className="btn quiet" type="button" onClick={close}>
+          Cancel
+        </button>
+        <button className="btn" style={{ marginTop: 16, minHeight: 48 }} type="submit">
+          Add
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** Who gets what at the end: money put in is paid back, and what the tour made is shared. */
+function Split({ b, tour }: { b: BudgetData; tour: Tour }) {
+  const { update } = useTour();
+  const s = splitFor(tour);
+  const short = s.net < 0;
+  const putIn = tour.putIn ?? [];
+  const people = `${s.ways} ${s.ways === 1 ? 'person' : 'people'}`;
+
+  return (
+    <>
+      <div className="headline">
+        <p className="label">{short ? 'Nothing to share out, on the figures so far' : 'To share out, on the figures so far'}</p>
+        <p className="figure">{formatMoney(short ? s.net : s.toShare)}</p>
+        <p className={`verdict ${short ? 'bad' : 'good'}`}>{short ? `The tour is ${formatMoney(-s.net)} short` : s.ways === 1 ? 'All to one person' : `${formatMoney(s.each)} each, between ${people}`}</p>
+        <p className="sub">
+          {b.showCount === 0
+            ? 'No shows yet.'
+            : s.open
+              ? `${s.open} of ${b.showCount} ${b.showCount === 1 ? 'show is' : 'shows are'} not settled, so this can still move.`
+              : 'Every show is settled.'}
+        </p>
+      </div>
+
+      <section className="section" aria-labelledby="split-ways">
+        <div className="section-head">
+          <h2 className="heading" id="split-ways">
+            Shared between
+          </h2>
+        </div>
+        <NumberField
+          label="People sharing what the tour makes"
+          suffix="people"
+          value={tour.splitBetween}
+          placeholder={String(s.ways)}
+          onChange={(v) => update((t) => (t.splitBetween = v))}
+          note={tour.splitBetween === undefined ? `Everyone on the road (${s.ways}) until you say otherwise. Leave out anyone who is paid a fee.` : undefined}
+        />
+      </section>
+
+      <section className="section" aria-labelledby="split-in">
+        <div className="section-head">
+          <h2 className="heading" id="split-in">
+            Money to pay back
+          </h2>
+          <Amount value={s.putIn} />
+        </div>
+        <p className="note" style={{ marginTop: 8 }}>
+          Money a member or a label put in to get the tour on the road, and is owed back. It is paid back before anything is shared out. Money that does not have to be paid back goes on the Plan, as other income.
+        </p>
+        {putIn.length > 0 && (
+          <ul className="rows">
+            {putIn.map((p) => (
+              <li className="row" key={p.id}>
+                <span className="name">
+                  <span className="label">{p.who}</span>
+                  <button className="text-btn" type="button" style={{ display: 'block', padding: 0 }} onClick={() => update((t) => (t.putIn = t.putIn?.filter((x) => x.id !== p.id)))}>
+                    Remove<span className="sr-only"> {p.who}</span>
+                  </button>
+                </span>
+                <span className="end">
+                  <Amount value={p.amount} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <AddPutIn />
+      </section>
+
+      <section className="section" aria-labelledby="split-out">
+        <div className="section-head">
+          <h2 className="heading" id="split-out">
+            Who gets what
+          </h2>
+        </div>
+        <ul className="rows">
+          {!short &&
+            putIn.map((p) => (
+              <li className="row" key={p.id}>
+                <span className="name">
+                  <span className="label">{p.who}</span>
+                  <span className="note">Paid back</span>
+                </span>
+                <span className="end">
+                  <Amount value={p.amount} />
+                </span>
+              </li>
+            ))}
+          {short && s.putIn > 0 && (
+            <li className="row">
+              <span className="name">
+                <span className="label">Paid back</span>
+                <span className="note">
+                  Of the {formatMoney(s.putIn)} put in. The other {formatMoney(s.putIn - s.paidBack)} went on the shortfall.
+                </span>
+              </span>
+              <span className="end">
+                <Amount value={s.paidBack} />
+              </span>
+            </li>
+          )}
+          <li className="row">
+            <span className="name">
+              <span className="label">{s.ways === 1 ? 'One share' : `Each of ${people}`}</span>
+              <span className="note">{short ? 'Nothing to share while the tour is short' : 'An even share of what the tour made'}</span>
+            </span>
+            <span className="end">
+              <Amount value={s.each} />
+            </span>
+          </li>
+          {s.left > 0 && (
+            <li className="row">
+              <span className="name">
+                <span className="label">Left over</span>
+                <span className="note">The odd dollars an even split leaves</span>
+              </span>
+              <span className="end">
+                <Amount value={s.left} />
+              </span>
+            </li>
+          )}
+        </ul>
+      </section>
+    </>
+  );
+}
+
+export function Budget({ view }: { view: View }) {
   const { tour, today } = useTour();
   const b = budget(tour);
   return (
@@ -363,7 +551,7 @@ export function Budget({ view }: { view: 'plan' | 'actuals' }) {
       <Back to="/tours">Tours</Back>
       <TourHeader tour={tour} />
       <Switch view={view} />
-      {view === 'plan' ? <Plan b={b} /> : <Actuals b={b} tour={tour} today={today} />}
+      {view === 'plan' ? <Plan b={b} /> : view === 'actuals' ? <Actuals b={b} tour={tour} today={today} /> : <Split b={b} tour={tour} />}
       {tour.demoToday ? (
         <p className="sample">Sample tour. Figures are invented, and today is set to {formatDay(tour.demoToday)} so it reads as mid-run.</p>
       ) : (

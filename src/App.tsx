@@ -30,7 +30,7 @@ function tourScreen(route: string[]): { tab: Tab; el: React.ReactNode } {
     case 'rates':
       return { tab: 'rates', el: <Rates /> };
     default:
-      return { tab: 'budget', el: <Budget view={b === 'actuals' ? 'actuals' : 'plan'} /> };
+      return { tab: 'budget', el: <Budget view={b === 'actuals' || b === 'split' ? b : 'plan'} /> };
   }
 }
 

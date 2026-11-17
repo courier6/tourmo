@@ -8,7 +8,7 @@ import { Back, SelectField, TextField } from '../components';
 import { CityField, MilesField } from '../CityField';
 import { go } from '../router';
 import { useTour, useTours } from '../store';
-import { CommissionsSection, DefaultsSection, FuelSection, VanSection } from './Rates';
+import { CommissionsSection, DefaultsSection, FuelSection, PeopleSection, VanSection } from './Rates';
 
 const STEPS = ['Name', 'Dates', 'Rates'];
 const KIND_LABEL: Record<DateKind, string> = { show: 'Show', off: 'Off day', travel: 'Travel day' };
@@ -239,9 +239,10 @@ export function RatesStep() {
         <p className="note">
           {tour.name} {'·'} {count} {count === 1 ? 'date' : 'dates'}. Every field already has a figure, shown in grey: worked out from your dates, or estimated for this route. Type over one only where you know better.
         </p>
-        {tour.ratesFrom && <p className="note">Commissions, van and merch figures were started from {tour.ratesFrom}.</p>}
+        {tour.ratesFrom && <p className="note">The headcount, commissions, van, food and merch figures were started from {tour.ratesFrom}.</p>}
       </header>
 
+      <PeopleSection planning />
       <CommissionsSection />
       <VanSection planning />
       <FuelSection planning />

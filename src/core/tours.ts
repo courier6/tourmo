@@ -16,6 +16,10 @@ export interface CarryOver {
   merchPerShow?: Money;
   lodgingPerNight?: Money;
   lodgingRooms?: number;
+  people?: number;
+  perDiem?: Money;
+  merchCostRate?: number;
+  splitBetween?: number;
 }
 
 /**
@@ -42,6 +46,10 @@ export function carryOver(tours: Tour[]): CarryOver | undefined {
     merchPerShow: merch || undefined,
     lodgingPerNight: own('lodgingPerNight', latest.lodgingPerNightDefault),
     lodgingRooms: latest.lodgingRooms,
+    people: latest.people,
+    perDiem: own('perDiem', latest.perDiem),
+    merchCostRate: own('merchCost', latest.merchCostRate),
+    splitBetween: latest.splitBetween,
   };
 }
 
@@ -58,6 +66,10 @@ export function blankTour(id: string, name: string, homeCity = '', homePlace?: P
     merchPerShowDefault: carried?.merchPerShow,
     lodgingPerNightDefault: carried?.lodgingPerNight,
     lodgingRooms: carried?.lodgingRooms,
+    people: carried?.people,
+    perDiem: carried?.perDiem,
+    merchCostRate: carried?.merchCostRate,
+    splitBetween: carried?.splitBetween,
     ratesFrom: carried?.from,
     dates: [],
     lines: [],
@@ -113,6 +125,7 @@ const isOffer = (v: unknown) =>
   isOptionalMoney(v.threshold) &&
   isOneOf(v.basis, 'gross', 'net');
 const isPlace = (v: unknown) => isObject(v) && isMoney(v.lat) && isMoney(v.lon);
+const isPutIn = (v: unknown) => isObject(v) && typeof v.id === 'string' && typeof v.who === 'string' && isMoney(v.amount);
 const isDrives = (v: unknown) => isObject(v) && Object.values(v).every((d) => isObject(d) && isMoney(d.miles));
 
 function isTourDate(v: unknown): v is TourDate {
@@ -131,6 +144,7 @@ function isTourDate(v: unknown): v is TourDate {
     isPlanActual(v.lodging) &&
     Array.isArray(v.fuelFillUps) &&
     v.fuelFillUps.every(isMoney) &&
+    isOptionalMoney(v.food) &&
     Array.isArray(v.lines) &&
     v.lines.every(isLine) &&
     typeof v.settled === 'boolean'
@@ -160,11 +174,16 @@ export function isTour(v: unknown): v is Tour {
     isObject(v.fuel) &&
     isOptionalMoney(v.fuel.mpg) &&
     isOptionalMoney(v.fuel.pricePerGallon) &&
+    isOptionalMoney(v.people) &&
+    isOptionalMoney(v.perDiem) &&
     isOptionalMoney(v.merchPerShowDefault) &&
+    isOptionalMoney(v.merchCostRate) &&
     isOptionalMoney(v.lodgingPerNightDefault) &&
     isOptionalMoney(v.lodgingRooms) &&
     isOptionalMoney(v.milesHome) &&
     (v.drives === undefined || isDrives(v.drives)) &&
+    (v.putIn === undefined || (Array.isArray(v.putIn) && v.putIn.every(isPutIn))) &&
+    isOptionalMoney(v.splitBetween) &&
     (v.setup === undefined || isOneOf(v.setup, 'dates', 'rates')) &&
     Array.isArray(v.lines) &&
     v.lines.every(isLine) &&
