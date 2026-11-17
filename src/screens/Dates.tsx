@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { dateStatus, describeLeg, formatDay, formatMoney, formatNumber, legHome, legInto, lodgingFor, newId, routeMiles, STATUS_LABEL, tourRates, type DateKind, type Money, type Place, type TourDate } from '../core';
-import { Back, MoneyField, SelectField, TextField } from '../components';
+import { Back, Check, MoneyField, SelectField, TextField } from '../components';
 import { CityField, MilesField } from '../CityField';
 import { go, href } from '../router';
 import { useTour } from '../store';
@@ -72,7 +72,11 @@ export function DateForm({ dateId }: { dateId?: string }) {
   // over, so it starts empty too and goes on following the city and the kind
   // of day when those are changed here. A figure the band typed stays.
   const [merch, setMerch] = useState<Money | undefined>(() => (existing && existing.merch.plan !== (existing.kind === 'show' ? merchFigure : 0) ? existing.merch.plan : undefined));
-  const [lodging, setLodging] = useState<Money | undefined>(() => (existing && existing.lodging.plan !== lodgingFor(tour, existing) ? existing.lodging.plan : undefined));
+  // A night planned at 0 where a room would otherwise be planned is a night
+  // with no room to pay for. It opens ticked, and unticking it brings back the
+  // worked-out figure rather than a typed 0.
+  const [noRoom, setNoRoom] = useState(() => !!existing && existing.lodging.plan === 0 && lodgingFor(tour, existing) > 0);
+  const [lodging, setLodging] = useState<Money | undefined>(() => (existing && !noRoom && existing.lodging.plan !== lodgingFor(tour, existing) ? existing.lodging.plan : undefined));
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   if (dateId && !existing) {
@@ -112,7 +116,7 @@ export function DateForm({ dateId }: { dateId?: string }) {
             target.kind = kind;
             target.milesFromPrevious = miles;
             target.merch.plan = kind === 'show' ? (merch ?? merchFigure) : 0;
-            target.lodging.plan = lodging ?? lodgingFigure;
+            target.lodging.plan = noRoom && lodgingFigure > 0 ? 0 : (lodging ?? lodgingFigure);
             if (kind !== 'show') target.offer = undefined;
           });
           go('/dates');
@@ -148,23 +152,28 @@ export function DateForm({ dateId }: { dateId?: string }) {
         />
         <MilesField label="Miles from the previous stop" value={miles} onChange={setMiles} leg={legInto(tour, { id: existing?.id, date, city, place, milesFromPrevious: miles })} />
         {kind === 'show' && <MoneyField label="Planned merch" value={merch} onChange={setMerch} placeholder={String(merchFigure / 100)} note={merch === undefined ? 'Left empty, it uses the merch per show from Rates.' : undefined} />}
-        <MoneyField
-          label="Planned lodging"
-          value={lodging}
-          onChange={setLodging}
-          placeholder={String(lodgingFigure / 100)}
-          note={
-            lodging !== undefined
-              ? 'Enter 0 for a night with no lodging cost.'
-              : city.trim() === ''
-                ? 'Worked out once the city is in.'
-                : lodgingFigure === 0
-                  ? 'A night at home, so nothing is planned. Type a figure if there is a cost.'
-                  : ownLodging
-                    ? 'Left empty, it uses your lodging per night from Rates.'
-                    : `Left empty, it uses ${formatMoney(lodgingFigure)}: ${tourRates(tour).rooms} ${tourRates(tour).rooms === 1 ? 'room' : 'rooms'} at the federal lodging rate for ${city.trim()} that month.`
-          }
-        />
+        {lodgingFigure > 0 && <Check label="No room to pay for this night" checked={noRoom} onChange={setNoRoom} />}
+        {noRoom && lodgingFigure > 0 ? (
+          <p className="note">Staying with friends, put up by the venue or driving through the night: no lodging is planned.</p>
+        ) : (
+          <MoneyField
+            label="Planned lodging"
+            value={lodging}
+            onChange={setLodging}
+            placeholder={String(lodgingFigure / 100)}
+            note={
+              lodging !== undefined
+                ? undefined
+                : city.trim() === ''
+                  ? 'Worked out once the city is in.'
+                  : lodgingFigure === 0
+                    ? 'A night at home, so nothing is planned. Type a figure if there is a cost.'
+                    : ownLodging
+                      ? 'Left empty, it uses your lodging per night from Rates.'
+                      : `Left empty, it uses ${formatMoney(lodgingFigure)}: ${tourRates(tour).rooms} ${tourRates(tour).rooms === 1 ? 'room' : 'rooms'} at the federal lodging rate for ${city.trim()} that month.`
+            }
+          />
+        )}
 
         <button className="btn" type="submit" disabled={!valid} style={valid ? undefined : { opacity: 0.5 }}>
           {existing ? 'Save date' : 'Add date'}
