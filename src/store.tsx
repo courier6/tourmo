@@ -2,7 +2,7 @@
 // signal. No accounts and no sync: one device, as the handoff's default says.
 
 import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { blankTour, carryOver, isTour, legs, localToday, newId, SAMPLE_TOUR_IDS, seedTours, type Place, type Tour } from './core';
+import { blankTour, carryOver, isTour, keepDrives, legs, localToday, newId, SAMPLE_TOUR_IDS, seedTours, tourPhase, type Place, type Tour } from './core';
 import { figuresFrom, onLookup, refreshFigures, wantRoad } from './lookups';
 import { Ctx, type Store } from './storeContext';
 
@@ -72,6 +72,32 @@ function read(text: string): { data: Stored; complete: boolean } | undefined {
   }
 }
 
+/**
+ * A tour that is past setup holds the miles of its own drives. One saved
+ * before drives were kept takes them now, from what this device knows.
+ */
+function withDrives(data: Stored): Stored {
+  for (const tour of data.tours) if (!tour.setup && !tour.drives) keepDrives(tour);
+  return data;
+}
+
+/**
+ * Road miles have arrived. A tour that is not over yet takes them in place of
+ * its straight-line estimates, once; a finished tour keeps the miles it was
+ * planned at, so its figures against plan never move after the fact.
+ */
+function sharpenDrives(data: Stored): Stored {
+  let changed = false;
+  const tours = data.tours.map((tour) => {
+    if (tour.setup || tourPhase(tour, todayFor(tour)) === 'past') return tour;
+    const draft = structuredClone(tour);
+    if (!keepDrives(draft, true)) return tour;
+    changed = true;
+    return draft;
+  });
+  return changed ? { ...data, tours } : data;
+}
+
 function load(): Loaded {
   let text: string | null = null;
   try {
@@ -79,10 +105,10 @@ function load(): Loaded {
   } catch {
     // Storage blocked: the app still works for the session.
   }
-  if (!text) return { data: fresh(), setAside: false };
+  if (!text) return { data: withDrives(fresh()), setAside: false };
 
   const result = read(text);
-  if (result?.complete) return { data: result.data, setAside: false };
+  if (result?.complete) return { data: withDrives(result.data), setAside: false };
 
   // Something in the saved text is damaged or from a version this one does not
   // know. Keep a copy before the next save writes over it.
@@ -91,7 +117,7 @@ function load(): Loaded {
   } catch {
     // Nothing more can be done without storage.
   }
-  return { data: result?.data ?? fresh(), setAside: true };
+  return { data: withDrives(result?.data ?? fresh()), setAside: true };
 }
 
 function save(data: Stored) {
@@ -115,7 +141,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // what the screens work out, so each one redraws them.
   const [lookups, setLookups] = useState(0);
   useEffect(() => {
-    const stop = onLookup(() => setLookups((n) => n + 1));
+    const stop = onLookup(() => {
+      setLookups((n) => n + 1);
+      setData(sharpenDrives);
+    });
     void refreshFigures();
     return stop;
   }, []);
@@ -145,6 +174,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
         const draft = structuredClone(t);
         edit(draft);
         draft.dates.sort((a, b) => a.date.localeCompare(b.date));
+        // A drive that is new since setup (a date added, a city changed) is held from here on.
+        if (!draft.setup) keepDrives(draft);
         return draft;
       }),
     }));

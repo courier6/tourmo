@@ -15,6 +15,17 @@ export interface Place {
   area?: string; // the lodging-rate area the city falls in, when it has its own rate
 }
 
+/**
+ * The miles a drive is planned at, written into the tour so the fuel plan
+ * does not move when a road lookup arrives later or is lost with the device's
+ * kept figures. `exact` marks road miles; without it the figure is the
+ * straight-line estimate.
+ */
+export interface KeptDrive {
+  miles: number;
+  exact?: boolean;
+}
+
 /** The outside figures a tour can hold as estimates rather than as the band's own. */
 export type EstimatedRate = 'vanDailyRate' | 'mpg' | 'gasPrice' | 'lodgingPerNight';
 
@@ -35,6 +46,7 @@ export interface Tour {
   dates: TourDate[]; // ordered by date
   lines: ExtraLine[]; // tour-wide extras, e.g. merch cost reimbursement
   milesHome?: number; // added: the leg from the last date back to homeCity. Empty = estimated
+  drives?: Record<string, KeptDrive>; // added: the miles each untyped drive is planned at, kept once setup ends
   demoToday?: string; // added: sample data only, pins "today" so the tour reads as mid-run
   setup?: SetupStep; // added: the step a new tour has reached; absent once it is set up
 }

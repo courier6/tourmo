@@ -1,6 +1,7 @@
 // Starting a tour from nothing, and placing a tour in time for the tour list.
 
 import { keepEstimates, lodgingFor, tourRates } from './rates';
+import { keepDrives } from './route';
 import { SAMPLE_TOUR_IDS } from './seed';
 import { showDates, tourSpan } from './calc';
 import type { Commission, EstimatedRate, Money, Place, Tour, TourDate } from './types';
@@ -65,13 +66,15 @@ export function blankTour(id: string, name: string, homeCity = '', homePlace?: P
 }
 
 /**
- * Ends setup. Today's estimates are written into the tour, so its plan stays
- * put when the estimates are refreshed later. The dates were entered before
+ * Ends setup. Today's estimates and the miles of each drive are written into
+ * the tour, so its plan stays put when the estimates are refreshed or a road
+ * lookup arrives later. The dates were entered before
  * the rates, so each date's plan is filled in here: merch on show days, and
  * lodging on every night away from the home city, estimated for that city
  * unless the band set a figure. Changes the tour passed in.
  */
 export function finishSetup(tour: Tour): void {
+  keepDrives(tour);
   keepEstimates(tour);
   const rates = tourRates(tour);
   for (const d of tour.dates) {
