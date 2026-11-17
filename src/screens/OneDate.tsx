@@ -8,7 +8,7 @@ import {
   foodPlan,
   foodSpent,
   formatDay,
-  formatNumber,
+  formatDistance,
   fuelForDrive,
   fuelOnDate,
   fuelPlan,
@@ -20,6 +20,7 @@ import {
   showActual,
   showPlan,
   tourRates,
+  unitsOf,
   type Diff,
   type Money,
   type Tour,
@@ -230,7 +231,7 @@ function Entries({ tour, date }: { tour: Tour; date: TourDate }) {
             <label htmlFor="fuel">Fuel bought</label>
             {drive.miles > 0 && (
               <span className="note">
-                About {money(drive.cost)} for the {formatNumber(drive.miles)} mi drive in
+                About {money(drive.cost)} for the {formatDistance(drive.miles, unitsOf(tour))} drive in
               </span>
             )}
             <span className="note">

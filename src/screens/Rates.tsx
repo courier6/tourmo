@@ -2,7 +2,7 @@
 // The sections are shared with the last step of setting up a new tour.
 
 import { useState } from 'react';
-import { CURRENCY_OPTIONS, currencyOf, DEFAULT_PEOPLE, findLine, foodPlan, formatNumber, formatPercent, fuelPlan, legHome, newId, peopleOn, routeMiles, setCurrency, tourDays, tourRates, type Commission, type Currency, type EstimatedRate, type Money, type Rate, type Tour } from '../core';
+import { CURRENCY_OPTIONS, currencyOf, DEFAULT_PEOPLE, findLine, foodPlan, formatNumber, formatPercent, fuelPlan, distanceNumber, formatMileage, fuelPriceIn, legHome, mileageIn, mpgFrom, newId, peopleOn, perGallonFrom, routeMiles, setCurrency, setUnits, tourDays, tourRates, UNIT_WORDS, UNITS_OPTIONS, unitsOf, type Commission, type Currency, type EstimatedRate, type Money, type Rate, type Tour, type Units } from '../core';
 import { Amount, Back, Check, MoneyField, NumberField, SelectField, TextField } from '../components';
 import { useMoney } from '../currency';
 import { go } from '../router';
@@ -227,6 +227,11 @@ export function FuelSection({ planning = false }: { planning?: boolean }) {
   const money = useMoney();
   const setRate = useSetRate();
   const { mpg, gasPrice } = tourRates(tour);
+  const units = unitsOf(tour);
+  const words = UNIT_WORDS[units];
+  const metric = units === 'metric';
+  // The tour holds miles per gallon and cents per gallon; the fields show the tour's units.
+  const perUnit = (centsPerGallon: number) => money(fuelPriceIn(centsPerGallon, units));
   return (
     <section className="section" aria-labelledby="r-fuel">
       <div className="section-head">
@@ -236,14 +241,27 @@ export function FuelSection({ planning = false }: { planning?: boolean }) {
         <Amount value={fuelPlan(tour)} />
       </div>
       <div className="grid-2">
-        <NumberField label="Van mileage" suffix="mpg" value={tour.fuel.mpg} placeholder={String(mpg.estimate)} onChange={(v) => setRate('mpg', (t) => (t.fuel.mpg = v))} />
-        <MoneyField label="Price per gallon" value={tour.fuel.pricePerGallon} placeholder={asDollars(gasPrice.estimate)} onChange={(v) => setRate('gasPrice', (t) => (t.fuel.pricePerGallon = v))} />
+        <NumberField
+          label={metric ? 'Fuel the van uses' : 'Van mileage'}
+          suffix={words.mileage}
+          value={tour.fuel.mpg === undefined ? undefined : mileageIn(tour.fuel.mpg, units)}
+          placeholder={String(Math.round(mileageIn(mpg.estimate, units) * 10) / 10)}
+          onChange={(v) => setRate('mpg', (t) => (t.fuel.mpg = v === undefined ? undefined : mpgFrom(v, units)))}
+        />
+        <MoneyField
+          label={`Price per ${words.volume}`}
+          value={tour.fuel.pricePerGallon === undefined ? undefined : fuelPriceIn(tour.fuel.pricePerGallon, units)}
+          placeholder={asDollars(fuelPriceIn(gasPrice.estimate, units))}
+          onChange={(v) => setRate('gasPrice', (t) => (t.fuel.pricePerGallon = v === undefined ? undefined : perGallonFrom(v, units)))}
+        />
       </div>
       <Notes
         lines={[
-          rateNote('Mileage', mpg, (n) => `${n} mpg`),
-          rateNote('Price', gasPrice, money),
-          `The fuel plan is the ${formatNumber(routeMiles(tour))} route miles divided by the mileage, times the price.`,
+          rateNote(metric ? 'Fuel used' : 'Mileage', mpg, (n) => formatMileage(n, units)),
+          rateNote('Price', gasPrice, perUnit),
+          metric
+            ? `The fuel plan is the ${distanceNumber(routeMiles(tour), units)} route kilometres, times the litres used per 100 km, times the price.`
+            : `The fuel plan is the ${formatNumber(routeMiles(tour))} route miles divided by the mileage, times the price.`,
         ]}
       />
       {!planning && (
@@ -339,14 +357,22 @@ export function Rates() {
             })
           }
           note="The route starts and ends here."
+          units={unitsOf(tour)}
         />
-        <MilesField label="Miles home from the last date" value={tour.milesHome} onChange={(v) => update((t) => (t.milesHome = v))} leg={legHome(tour)} />
-        <SelectField<Currency>
-          label="Currency"
-          value={currencyOf(tour)}
-          onChange={(v) => update((t) => setCurrency(t, v))}
-          options={CURRENCY_OPTIONS}
-          note="Every amount on this tour is in it. Changing it converts nothing: 1,000 stays 1,000."
+        <MilesField
+          label={`${UNIT_WORDS[unitsOf(tour)].Distances} home from the last date`}
+          value={tour.milesHome}
+          onChange={(v) => update((t) => (t.milesHome = v))}
+          leg={legHome(tour)}
+          units={unitsOf(tour)}
+        />
+        <SelectField<Currency> label="Currency" value={currencyOf(tour)} onChange={(v) => update((t) => setCurrency(t, v))} options={CURRENCY_OPTIONS} />
+        <SelectField<Units> label="Distances and fuel" value={unitsOf(tour)} onChange={(v) => update((t) => setUnits(t, v))} options={UNITS_OPTIONS} />
+        <Notes
+          lines={[
+            'Currency: every amount on this tour is in it. Changing it converts nothing: 1,000 stays 1,000.',
+            'Distances and fuel: changing these converts the figures, so every drive and the fuel plan stay as they are.',
+          ]}
         />
       </section>
 

@@ -7,7 +7,7 @@ import {
   expenseDiff,
   CURRENCIES,
   formatDay,
-  formatNumber,
+  formatDistance,
   formatRange,
   lineDiff,
   netDiff,
@@ -22,6 +22,7 @@ import {
   showPlan,
   splitFor,
   STATUS_LABEL,
+  unitsOf,
   type Budget as BudgetData,
   type BudgetLine,
   type Money,
@@ -55,7 +56,7 @@ function TourHeader({ tour }: { tour: Tour }) {
             {shows.length} {shows.length === 1 ? 'show' : 'shows'} {'·'} {formatRange(first.date, last.date)}
           </p>
           <p className="note">
-            {route} {'·'} {formatNumber(routeMiles(tour))} mi
+            {route} {'·'} {formatDistance(routeMiles(tour), unitsOf(tour))}
           </p>
         </>
       ) : (

@@ -8,6 +8,7 @@ import { guaranteedMinimum, payout } from './payout';
 import { peopleOn, tourDays, tourRates } from './rates';
 import { legInto, routeMiles, unknownLegs } from './route';
 import type { Commission, Currency, ExtraLine, Money, Tour, TourDate } from './types';
+import { formatDistance, formatMileage, fuelPriceIn, UNIT_WORDS, unitsOf } from './units';
 
 const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -271,6 +272,13 @@ export function budget(tour: Tour): Budget {
 
   const planFuel = fuelPlan(tour);
   const spent = fuelSpent(tour);
+  // The same sum either way: miles ÷ mpg, or kilometres × litres per 100 km.
+  const units = unitsOf(tour);
+  const estimate = rates.gasPrice.estimated ? ' (estimate)' : '';
+  const fuelSum =
+    units === 'metric'
+      ? `${formatDistance(routeMiles(tour), units)} × ${formatMileage(rates.mpg.value, units)} × ${money(fuelPriceIn(rates.gasPrice.value, units))} a litre${estimate}`
+      : `${formatNumber(routeMiles(tour))} mi ÷ ${formatNumber(rates.mpg.value)} mpg × ${money(rates.gasPrice.value)}${estimate}`;
   const fuel: BudgetLine = {
     id: 'fuel',
     kind: 'fuel',
@@ -278,9 +286,7 @@ export function budget(tour: Tour): Budget {
     direction: 'out',
     plan: planFuel,
     now: trackTourWide(planFuel, spent, tour.fuel.final),
-    how:
-      `Route: ${formatNumber(routeMiles(tour))} mi ÷ ${formatNumber(rates.mpg.value)} mpg × ${money(rates.gasPrice.value)}${rates.gasPrice.estimated ? ' (estimate)' : ''}` +
-      (unknownLegs(tour) ? `. ${plural(unknownLegs(tour), 'drive')} not counted: miles not known` : ''),
+    how: `Route: ${fuelSum}` + (unknownLegs(tour) ? `. ${plural(unknownLegs(tour), 'drive')} not counted: ${UNIT_WORDS[units].distances} not known` : ''),
     progress:
       spent > planFuel
         ? `${money(spent)} spent, ${money(spent - planFuel)} over`

@@ -2,7 +2,7 @@
 // versions in the same ledger style so a tour can be built end to end.
 
 import { useState } from 'react';
-import { dateStatus, describeLeg, formatDay, formatNumber, legHome, legInto, lodgingFor, newId, routeMiles, STATUS_LABEL, tourRates, type DateKind, type Money, type Place, type TourDate } from '../core';
+import { dateStatus, describeLeg, distanceNumber, formatDay, legHome, legInto, lodgingFor, newId, routeMiles, STATUS_LABEL, tourRates, UNIT_WORDS, unitsOf, type DateKind, type Money, type Place, type TourDate } from '../core';
 import { Back, Check, MoneyField, SelectField, TextField } from '../components';
 import { CityField, MilesField } from '../CityField';
 import { useMoney } from '../currency';
@@ -13,14 +13,15 @@ const KIND_LABEL: Record<DateKind, string> = { show: 'Show', off: 'Off day', tra
 
 export function Dates() {
   const { tour, today } = useTour();
+  const units = unitsOf(tour);
   return (
     <main className="screen">
       <Back to="/tours">Tours</Back>
       <header className="screen-head">
         <h1 className="title">Dates</h1>
         <p className="note">
-          {tour.dates.length} {tour.dates.length === 1 ? 'date' : 'dates'} {'·'} {formatNumber(routeMiles(tour))} route miles
-          {legHome(tour).miles ? `, including ${formatNumber(legHome(tour).miles)} home` : ''}
+          {tour.dates.length} {tour.dates.length === 1 ? 'date' : 'dates'} {'·'} {distanceNumber(routeMiles(tour), units)} route {UNIT_WORDS[units].distances}
+          {legHome(tour).miles ? `, including ${distanceNumber(legHome(tour).miles, units)} home` : ''}
         </p>
       </header>
 
@@ -36,7 +37,7 @@ export function Dates() {
                 </span>
                 <span className="note">
                   <span className="money">{detail}</span>
-                  {describeLeg(legInto(tour, d)) ? ` · ${describeLeg(legInto(tour, d))}` : ''}
+                  {describeLeg(legInto(tour, d), units) ? ` · ${describeLeg(legInto(tour, d), units)}` : ''}
                 </span>
               </a>
               <span className="end">
@@ -60,6 +61,7 @@ export function Dates() {
 export function DateForm({ dateId }: { dateId?: string }) {
   const { tour, update } = useTour();
   const money = useMoney();
+  const units = unitsOf(tour);
   const existing = dateId ? tour.dates.find((d) => d.id === dateId) : undefined;
   const last = tour.dates.at(-1);
 
@@ -134,6 +136,7 @@ export function DateForm({ dateId }: { dateId?: string }) {
             setPlace(p);
           }}
           note="Start typing and pick it from the list."
+          units={units}
         />
         <SelectField
           label="Kind of day"
@@ -152,7 +155,7 @@ export function DateForm({ dateId }: { dateId?: string }) {
             ) : undefined
           }
         />
-        <MilesField label="Miles from the previous stop" value={miles} onChange={setMiles} leg={legInto(tour, { id: existing?.id, date, city, place, milesFromPrevious: miles })} />
+        <MilesField label={`${UNIT_WORDS[units].Distances} from the previous stop`} value={miles} onChange={setMiles} leg={legInto(tour, { id: existing?.id, date, city, place, milesFromPrevious: miles })} units={units} />
         {kind === 'show' && <MoneyField label="Planned merch" value={merch} onChange={setMerch} placeholder={String(merchFigure / 100)} note={merch === undefined ? 'Left empty, it uses the merch per show from Rates.' : undefined} />}
         {lodgingFigure > 0 && <Check label="No room to pay for this night" checked={noRoom} onChange={setNoRoom} />}
         {noRoom && lodgingFigure > 0 ? (

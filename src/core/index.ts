@@ -3,6 +3,7 @@ export * from './money';
 export * from './dates';
 export * from './payout';
 export * from './parser';
+export * from './units';
 export * from './route';
 export * from './rates';
 export * from './cities';

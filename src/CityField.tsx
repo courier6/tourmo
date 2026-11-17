@@ -3,7 +3,7 @@
 // can still be typed; a city that is not in the list just has no estimate.
 
 import { useEffect, useId, useState, type ReactNode, type Ref } from 'react';
-import { formatDrive, matchCity, prepareCities, searchCities, type City, type Leg, type Place } from './core';
+import { distanceIn, distanceNumber, formatDistance, formatDrive, matchCity, milesFrom, prepareCities, searchCities, UNIT_WORDS, type City, type Leg, type Place, type Units } from './core';
 import { wantRoad } from './lookups';
 import { NumberField } from './components';
 
@@ -36,9 +36,12 @@ export function CityField({
   note,
   autoFocus,
   inputRef,
+  units = 'us',
 }: {
   label: string;
   value: string;
+  /** What the tour's distances are typed in, for the wording. */
+  units?: Units;
   /** Where the city is, when it has been matched to the list. */
   place: Place | undefined;
   onChange: (city: string, place: Place | undefined) => void;
@@ -127,7 +130,7 @@ export function CityField({
       )}
       {(unmatched || note) && (
         <p className={`note ${unmatched ? 'bad' : ''}`} id={id + '-note'}>
-          {unmatched ? 'Not matched to a city in the list, so drives to and from it are not estimated. Pick one from the list, or type the miles yourself.' : note}
+          {unmatched ? `Not matched to a city in the list, so drives to and from it are not estimated. Pick one from the list, or type the ${UNIT_WORDS[units].distances} yourself.` : note}
         </p>
       )}
     </div>
@@ -135,10 +138,13 @@ export function CityField({
 }
 
 /**
- * Miles for one drive. Left empty, the drive is estimated from the two cities;
- * a typed figure replaces the estimate. `leg` is the drive as it stands.
+ * The distance of one drive. Left empty, the drive is estimated from the two
+ * cities; a typed figure replaces the estimate. `leg` is the drive as it
+ * stands. The figure held is always miles: on a tour shown in kilometres the
+ * field shows and takes kilometres, and converts on the way in and out.
  */
-export function MilesField({ label, value, onChange, leg }: { label: string; value: number | undefined; onChange: (v: number | undefined) => void; leg: Leg }) {
+export function MilesField({ label, value, onChange, leg, units = 'us' }: { label: string; value: number | undefined; onChange: (v: number | undefined) => void; leg: Leg; units?: Units }) {
+  const words = UNIT_WORDS[units];
   const from = leg.from || 'the previous stop';
   const estimate = leg.estimate;
   // A drive that is still a straight-line estimate is looked up; the answer replaces it here.
@@ -149,14 +155,23 @@ export function MilesField({ label, value, onChange, leg }: { label: string; val
     // `wanted` stands for the two places.
   }, [wanted]);
 
-  const figure = estimate === undefined ? '' : leg.exact ? `${estimate.toLocaleString('en-US')} road miles from ${from}${leg.minutes ? `, allow ${formatDrive(leg.minutes)}` : ''}` : `about ${estimate.toLocaleString('en-US')} mi from ${from}, estimated`;
+  const figure = estimate === undefined ? '' : leg.exact ? `${distanceNumber(estimate, units)} road ${words.distances} from ${from}${leg.minutes ? `, allow ${formatDrive(leg.minutes)}` : ''}` : `about ${formatDistance(estimate, units)} from ${from}, estimated`;
   const note =
     estimate === undefined
-      ? 'Pick both cities from the list to have this worked out, or type the miles.'
+      ? `Pick both cities from the list to have this worked out, or type the ${words.distances}.`
       : estimate === 0
         ? 'Same city as the stop before, so no drive is counted.'
         : value === undefined
-          ? `Worked out for you: ${figure}. Type the miles to use your own figure.`
+          ? `Worked out for you: ${figure}. Type the ${words.distances} to use your own figure.`
           : `Your figure is used. Clear it to go back to ${figure}.`;
-  return <NumberField label={label} suffix="mi" value={value} onChange={onChange} placeholder={estimate ? String(estimate) : undefined} note={note} />;
+  return (
+    <NumberField
+      label={label}
+      suffix={words.distance}
+      value={value === undefined ? undefined : distanceIn(value, units)}
+      onChange={(v) => onChange(v === undefined ? undefined : milesFrom(v, units))}
+      placeholder={estimate ? String(Math.round(distanceIn(estimate, units) * 100) / 100) : undefined}
+      note={note}
+    />
+  );
 }
