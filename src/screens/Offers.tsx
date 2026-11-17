@@ -161,7 +161,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
               ))}
             </div>
           )}
-          {!empty && reading.type !== undefined && reading.basisAssumed && offer.type !== 'flat' && (
+          {!empty && reading.type !== undefined && reading.basisAssumed && offer.type !== 'flat' && offer.basis === 'gross' && (
             <p className="note" style={{ marginTop: 4 }}>
               Neither gross nor net was written, so the percentage is taken of the gross.
             </p>

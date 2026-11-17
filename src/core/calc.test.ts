@@ -58,6 +58,19 @@ describe('offer parser', () => {
     expect(parseOffer('70% of gross')).toMatchObject({ basis: 'gross', basisAssumed: false });
   });
 
+  it('reads the other ways net and gross are written', () => {
+    const net = { ok: true, basis: 'net', basisAssumed: false };
+    expect(parseOffer('$1,000 vs. 70% of NBOR')).toMatchObject({ ...net, type: 'versus', guarantee: $(1000), percentage: 0.7 });
+    expect(parseOffer('$500 vs 85% of NBOR, whichever is greater')).toMatchObject({ ...net, type: 'versus', percentage: 0.85 });
+    expect(parseOffer('85/15 after expenses')).toMatchObject({ ...net, type: 'percentage', percentage: 0.85 });
+    expect(parseOffer('70% after costs')).toMatchObject({ ...net, type: 'percentage', percentage: 0.7 });
+    expect(parseOffer('80% of door after the house nut')).toMatchObject({ ...net, type: 'percentage', percentage: 0.8 });
+    expect(parseOffer('$1K vs 80% of GBOR')).toMatchObject({ ok: true, basis: 'gross', basisAssumed: false });
+    // A figure after "after" is a threshold, not a word for net.
+    expect(parseOffer('1k plus 70% after 2,250')).toMatchObject({ ok: true, type: 'plus', threshold: $(2250), basis: 'gross', basisAssumed: true });
+    expect(parseOffer('70% after $300')).toMatchObject({ type: 'plus', threshold: $(300), basis: 'gross' });
+  });
+
   it('reads other spellings', () => {
     expect(parseOffer('1,000 v 70%')).toMatchObject({ type: 'versus', guarantee: $(1000), percentage: 0.7 });
     expect(parseOffer('$1,000 versus 70%')).toMatchObject({ type: 'versus', guarantee: $(1000) });
