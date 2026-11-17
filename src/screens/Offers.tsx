@@ -5,8 +5,9 @@ import {
   examplePayouts,
   formatDay,
   guaranteedMinimum,
+  CURRENCIES,
   parseOffer,
-  SHORTHAND_EXAMPLES,
+  shorthandExamples,
   showDates,
   showPlan,
   toOffer,
@@ -92,9 +93,9 @@ export function OfferEntry({ dateId }: { dateId: string }) {
 
   const [raw, setRaw] = useState(date?.offer?.raw ?? '');
   const [fields, setFields] = useState<Fields>(() => (date?.offer ? { ...date.offer } : fromParse(parseOffer(''))));
-  const [reading, setReading] = useState<ParsedOffer>(() => parseOffer(date?.offer?.raw ?? ''));
+  const [reading, setReading] = useState<ParsedOffer>(() => parseOffer(date?.offer?.raw ?? '', currency));
   // The fields corrected by hand. On a saved offer they are the ones that differ from what its text reads as.
-  const [byHand, setByHand] = useState<(keyof Fields)[]>(() => (date?.offer ? differing({ ...date.offer }, fromParse(parseOffer(date.offer.raw))) : []));
+  const [byHand, setByHand] = useState<(keyof Fields)[]>(() => (date?.offer ? differing({ ...date.offer }, fromParse(parseOffer(date.offer.raw, currency))) : []));
 
   if (!date) {
     return (
@@ -110,7 +111,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
   // fixing a typo does not put "Taken of" back to gross.
   const onRaw = (text: string) => {
     setRaw(text);
-    const p = parseOffer(text);
+    const p = parseOffer(text, currency);
     const read = fromParse(p);
     const changed = differing(fromParse(reading), read);
     // Writing "gross" or "net" where neither stood before says something new about the basis, even when the reading is the same.
@@ -160,7 +161,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
             autoCapitalize="off"
             spellCheck={false}
             value={raw}
-            placeholder="$1K vs 70%"
+            placeholder={`${CURRENCIES[currency].symbol}1K vs 70%`}
             aria-describedby="offer-forms"
             onChange={(e) => onRaw(e.target.value)}
           />
@@ -252,7 +253,7 @@ export function OfferEntry({ dateId }: { dateId: string }) {
         </section>
 
         <p className="note" id="offer-forms" style={{ marginTop: 16 }}>
-          Also reads: <span className="money">{SHORTHAND_EXAMPLES.join('  ·  ')}</span>
+          Also reads: <span className="money">{shorthandExamples(currency).join('  ·  ')}</span>
         </p>
 
         <button className="btn" type="submit">
