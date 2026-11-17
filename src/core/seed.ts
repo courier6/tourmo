@@ -1,7 +1,7 @@
-// Sample tours. "Spring run" is the handoff's worked example, mid-tour with
+// Sample tours. "Spring run" is the tests' worked example, mid-tour with
 // three of five shows settled. The two before it are finished tours, so the
 // tour list has past runs to look back on. All figures are invented. The
-// handoff's example plans no food and no share of merch as its cost, so each
+// worked example plans no food and no share of merch as its cost, so each
 // sample sets both to 0.
 
 import { dollars } from './money';

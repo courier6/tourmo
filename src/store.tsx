@@ -1,5 +1,5 @@
 // Tours are saved on the device (localStorage), so the app works with no
-// signal. No accounts and no sync: one device, as the handoff's default says.
+// signal. No accounts and no sync: a tour lives on one device.
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { blankTour, carryOver, isTour, keepDrives, legs, localToday, newId, SAMPLE_TOUR_IDS, seedTours, tourPhase, type Place, type Tour } from './core';

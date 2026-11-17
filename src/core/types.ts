@@ -1,5 +1,4 @@
-// Data model from the handoff doc. A few fields were added for the prototype
-// and are marked "added" below; everything else follows the doc.
+// The data model: a tour, its dates, offers and lines.
 
 export type Money = number; // US dollars, stored as whole cents
 
@@ -40,28 +39,28 @@ export interface Tour {
   id: string;
   name: string;
   homeCity: string; // the route starts and ends here
-  homePlace?: Place; // added
+  homePlace?: Place; // where homeCity is on the map
   commissions: Commission[];
   // Any rate left empty is estimated or worked out; see rates.ts. 0 is a real figure.
   vehicle: { dailyRate?: Money; days?: number; actual?: Money; final?: boolean };
   fuel: { mpg?: number; pricePerGallon?: Money; final?: boolean };
-  people?: number; // added: everyone who travels, hired players and crew included. Empty = 4
-  perDiem?: Money; // added: food for one person for one day
-  foodFinal?: boolean; // added: food spending is finished, so what was spent is the figure
+  people?: number; // everyone who travels, hired players and crew included. Empty = 4
+  perDiem?: Money; // food for one person for one day
+  foodFinal?: boolean; // food spending is finished, so what was spent is the figure
   merchPerShowDefault?: Money;
-  merchCostRate?: number; // added: the share of merch sales that goes on the goods, fees and cuts. 0.40 = 40%
+  merchCostRate?: number; // the share of merch sales that goes on the goods, fees and cuts. 0.40 = 40%
   lodgingPerNightDefault?: Money;
-  lodgingRooms?: number; // added: rooms a night, behind the lodging estimate. Empty = one for every two people
-  estimated?: EstimatedRate[]; // added: rates that hold an estimate kept from setup
-  ratesFrom?: string; // added: the earlier tour a new tour's rates were started from
-  putIn?: PutIn[]; // added: money to pay back before anything is shared out
-  splitBetween?: number; // added: how many people share what the tour makes. Empty = everyone on the road
+  lodgingRooms?: number; // rooms a night, behind the lodging estimate. Empty = one for every two people
+  estimated?: EstimatedRate[]; // rates that hold an estimate kept from setup
+  ratesFrom?: string; // the earlier tour a new tour's rates were started from
+  putIn?: PutIn[]; // money to pay back before anything is shared out
+  splitBetween?: number; // how many people share what the tour makes. Empty = everyone on the road
   dates: TourDate[]; // ordered by date
   lines: ExtraLine[]; // tour-wide extras, e.g. merch cost reimbursement
-  milesHome?: number; // added: the leg from the last date back to homeCity. Empty = estimated
-  drives?: Record<string, KeptDrive>; // added: the miles each untyped drive is planned at, kept once setup ends
-  demoToday?: string; // added: sample data only, pins "today" so the tour reads as mid-run
-  setup?: SetupStep; // added: the step a new tour has reached; absent once it is set up
+  milesHome?: number; // the leg from the last date back to homeCity. Empty = estimated
+  drives?: Record<string, KeptDrive>; // the miles each untyped drive is planned at, kept once setup ends
+  demoToday?: string; // sample data only, pins "today" so the tour reads as mid-run
+  setup?: SetupStep; // the step a new tour has reached; absent once it is set up
 }
 
 /** The new-tour steps that come after naming it. */
@@ -80,7 +79,7 @@ export interface TourDate {
   id: string;
   date: string; // ISO date
   city: string;
-  place?: Place; // added
+  place?: Place; // where the city is on the map
   kind: DateKind;
   milesFromPrevious?: number; // typed by hand. Empty = estimated from the two places
   offer?: Offer; // show dates only
@@ -89,7 +88,7 @@ export interface TourDate {
   merch: PlanActual; // plan defaults from the tour, editable per date
   lodging: PlanActual; // plan is 0 on nights with no lodging
   fuelFillUps: Money[]; // logged on the day they are bought
-  food?: Money; // added: food and per diems paid that day
+  food?: Money; // food and per diems paid that day
   lines: ExtraLine[]; // per-date extras, in or out, e.g. a lodging buyout
   settled: boolean;
 }

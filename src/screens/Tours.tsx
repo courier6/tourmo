@@ -1,5 +1,5 @@
 // The first screen: every tour on the device, grouped by where it sits
-// against today. Not in the mockups; a plain list in the same ledger style.
+// against today. A plain list in the same ledger style as the other screens.
 
 import { useState } from 'react';
 import { budget, currentEstimates, formatMonth, formatRange, localToday, SAMPLE_TOUR_IDS, showDates, tourPhase, type Tour, type TourPhase } from '../core';
