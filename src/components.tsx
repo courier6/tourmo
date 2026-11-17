@@ -41,8 +41,9 @@ interface NumberInputProps {
 /**
  * A text field that holds a number. It keeps what was typed (so "12." is not
  * rewritten mid-entry) and reports a number, or undefined when left empty.
- * Text that is not a number is flagged and reported as empty, so what is
- * saved never differs from what the field shows.
+ * Text that is not a number is flagged and reports nothing, so a slip of the
+ * thumb never wipes a figure that was already saved; the note under the field
+ * says which figure is still held.
  */
 export function NumberInput({ id, value, onChange, prefix, suffix, placeholder, ariaLabel, describedBy, emptyIsZero }: NumberInputProps) {
   const show = (v: number | undefined) => (v === undefined || (emptyIsZero && v === 0) ? '' : trim(v));
@@ -58,6 +59,8 @@ export function NumberInput({ id, value, onChange, prefix, suffix, placeholder, 
 
   const invalid = parseTyped(text) === 'invalid';
   const errorId = useId();
+  // The figure still held while the text is not a number, as "2,650". Empty when there is none.
+  const held = value === undefined || (emptyIsZero && value === 0) ? '' : (Math.round(value * 100) / 100).toLocaleString('en-US');
 
   return (
     <div className="number">
@@ -77,8 +80,8 @@ export function NumberInput({ id, value, onChange, prefix, suffix, placeholder, 
           onChange={(e) => {
             setText(e.target.value);
             const parsed = parseTyped(e.target.value);
-            const number = parsed === 'invalid' ? undefined : parsed;
-            const next = emptyIsZero ? (number ?? 0) : number;
+            if (parsed === 'invalid') return; // the last good figure stays saved
+            const next = emptyIsZero ? (parsed ?? 0) : parsed;
             last.current = next;
             onChange(next);
           }}
@@ -87,7 +90,7 @@ export function NumberInput({ id, value, onChange, prefix, suffix, placeholder, 
       </div>
       {invalid && (
         <p className="note bad" id={errorId} role="alert">
-          {emptyIsZero ? 'Not a number, so this counts as 0.' : 'Not a number, so nothing is saved here.'}
+          {held === '' ? 'Not a number, so nothing is saved here.' : `Not a number, so ${prefix ?? ''}${held}${suffix ?? ''} is still what is saved.`}
         </p>
       )}
     </div>
