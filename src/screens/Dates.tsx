@@ -1,0 +1,189 @@
+// The Dates list and the date form are not in the mockups. These are plain
+// versions in the same ledger style so a tour can be built end to end.
+
+import { useState } from 'react';
+import { dateStatus, describeLeg, formatDay, formatMoney, formatNumber, legHome, legInto, lodgingFor, newId, routeMiles, STATUS_LABEL, tourRates, type DateKind, type Money, type Place, type TourDate } from '../core';
+import { Back, MoneyField, SelectField, TextField } from '../components';
+import { CityField, MilesField } from '../CityField';
+import { go, href } from '../router';
+import { useTour } from '../store';
+
+const KIND_LABEL: Record<DateKind, string> = { show: 'Show', off: 'Off day', travel: 'Travel day' };
+
+export function Dates() {
+  const { tour, today } = useTour();
+  return (
+    <main className="screen">
+      <Back to="/tours">Tours</Back>
+      <header className="screen-head">
+        <h1 className="title">Dates</h1>
+        <p className="note">
+          {tour.dates.length} {tour.dates.length === 1 ? 'date' : 'dates'} {'·'} {formatNumber(routeMiles(tour))} route miles
+          {legHome(tour).miles ? `, including ${formatNumber(legHome(tour).miles)} home` : ''}
+        </p>
+      </header>
+
+      <ul className="rows" style={{ borderTop: '1px solid var(--ink)' }}>
+        {tour.dates.map((d) => {
+          const status = dateStatus(d, today);
+          const detail = d.kind === 'show' ? d.offer?.raw || 'No offer yet' : KIND_LABEL[d.kind];
+          return (
+            <li className="row" key={d.id}>
+              <a className="name" href={href('/date/' + d.id)} style={{ textDecoration: 'none', flex: 1 }}>
+                <span className="label">
+                  {formatDay(d.date)} {'·'} {d.city}
+                </span>
+                <span className="note">
+                  <span className="money">{detail}</span>
+                  {describeLeg(legInto(tour, d)) ? ` · ${describeLeg(legInto(tour, d))}` : ''}
+                </span>
+              </a>
+              <span className="end">
+                <span className={`status ${status}`}>{STATUS_LABEL[status]}</span>
+                <a className="note" href={href(`/dates/${d.id}/edit`)} style={{ display: 'block', padding: '6px 0 0' }}>
+                  Edit<span className="sr-only"> {d.city}</span>
+                </a>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <a className="btn quiet" href={href('/dates/new')}>
+        Add a date
+      </a>
+    </main>
+  );
+}
+
+export function DateForm({ dateId }: { dateId?: string }) {
+  const { tour, update } = useTour();
+  const existing = dateId ? tour.dates.find((d) => d.id === dateId) : undefined;
+  const last = tour.dates.at(-1);
+
+  const [date, setDate] = useState(existing?.date ?? (last ? nextDay(last.date) : ''));
+  const [city, setCity] = useState(existing?.city ?? '');
+  const [place, setPlace] = useState<Place | undefined>(existing?.place);
+  const [kind, setKind] = useState<DateKind>(existing?.kind ?? 'show');
+  const [miles, setMiles] = useState<number | undefined>(existing?.milesFromPrevious);
+  // Left empty on a new date, merch and lodging take the grey figure shown.
+  const [merch, setMerch] = useState<Money | undefined>(existing?.merch.plan);
+  const [lodging, setLodging] = useState<Money | undefined>(existing?.lodging.plan);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  if (dateId && !existing) {
+    return (
+      <main className="screen">
+        <Back to="/dates">Dates</Back>
+        <p>That date is no longer on the tour.</p>
+      </main>
+    );
+  }
+
+  const valid = /^\d{4}-\d{2}-\d{2}$/.test(date) && city.trim() !== '';
+  const merchFigure = tourRates(tour).merchPerShow.value;
+  const lodgingFigure = lodgingFor(tour, { city, place, date });
+  const ownLodging = tour.lodgingPerNightDefault !== undefined && !tour.estimated?.includes('lodgingPerNight');
+
+  return (
+    <main className="screen">
+      <Back to="/dates">Dates</Back>
+      <header className="screen-head">
+        <h1 className="title">{existing ? 'Edit date' : 'Add a date'}</h1>
+      </header>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!valid) return;
+          update((t) => {
+            const target: TourDate =
+              t.dates.find((d) => d.id === dateId) ??
+              (() => {
+                const created: TourDate = { id: newId('date'), date, city: '', kind, merch: { plan: 0 }, lodging: { plan: 0 }, fuelFillUps: [], lines: [], settled: false };
+                t.dates.push(created);
+                return created;
+              })();
+            target.date = date;
+            target.city = city.trim();
+            target.place = place;
+            target.kind = kind;
+            target.milesFromPrevious = miles;
+            target.merch.plan = kind === 'show' ? (merch ?? merchFigure) : 0;
+            target.lodging.plan = lodging ?? lodgingFigure;
+            if (kind !== 'show') target.offer = undefined;
+          });
+          go('/dates');
+        }}
+      >
+        <TextField label="Date" type="date" value={date} onChange={setDate} />
+        <CityField
+          label="City"
+          value={city}
+          place={place}
+          onChange={(c, p) => {
+            setCity(c);
+            setPlace(p);
+          }}
+          note="Start typing and pick it from the list."
+        />
+        <SelectField
+          label="Kind of day"
+          value={kind}
+          onChange={setKind}
+          options={[
+            ['show', 'Show'],
+            ['off', 'Off day'],
+            ['travel', 'Travel day'],
+          ]}
+        />
+        <MilesField label="Miles from the previous stop" value={miles} onChange={setMiles} leg={legInto(tour, { id: existing?.id, date, city, place, milesFromPrevious: miles })} />
+        {kind === 'show' && <MoneyField label="Planned merch" value={merch} onChange={setMerch} placeholder={String(merchFigure / 100)} note={merch === undefined ? 'Left empty, it uses the merch per show from Rates.' : undefined} />}
+        <MoneyField
+          label="Planned lodging"
+          value={lodging}
+          onChange={setLodging}
+          placeholder={String(lodgingFigure / 100)}
+          note={
+            lodging !== undefined
+              ? 'Enter 0 for a night with no lodging cost.'
+              : city.trim() === ''
+                ? 'Worked out once the city is in.'
+                : lodgingFigure === 0
+                  ? 'A night at home, so nothing is planned. Type a figure if there is a cost.'
+                  : ownLodging
+                    ? 'Left empty, it uses your lodging per night from Rates.'
+                    : `Left empty, it uses ${formatMoney(lodgingFigure)}: ${tourRates(tour).rooms} ${tourRates(tour).rooms === 1 ? 'room' : 'rooms'} at the federal lodging rate for ${city.trim()} that month.`
+          }
+        />
+
+        <button className="btn" type="submit" disabled={!valid} style={valid ? undefined : { opacity: 0.5 }}>
+          {existing ? 'Save date' : 'Add date'}
+        </button>
+        {existing && kind === 'show' && (
+          <a className="btn quiet" href={href('/offer/' + existing.id)}>
+            {existing.offer ? 'Edit the offer' : 'Enter the offer'}
+          </a>
+        )}
+        {existing && (
+          <button
+            className="btn plain"
+            type="button"
+            onClick={() => {
+              if (!confirmRemove) return setConfirmRemove(true);
+              update((t) => {
+                t.dates = t.dates.filter((d) => d.id !== existing.id);
+              });
+              go('/dates');
+            }}
+          >
+            {confirmRemove ? 'Tap again to remove this date and its figures' : 'Remove this date'}
+          </button>
+        )}
+      </form>
+    </main>
+  );
+}
+
+function nextDay(iso: string): string {
+  return new Date(new Date(iso + 'T00:00:00Z').getTime() + 86400000).toISOString().slice(0, 10);
+}

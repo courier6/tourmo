@@ -1,0 +1,35 @@
+/* The one theme file. The owner has not signed off on the ledger look, so
+   every colour, font and size the screens use is named here. */
+
+:root {
+  --ground: #f3f4f1;
+  --surface: #ffffff;
+  --ink: #16181d;
+  --secondary: #5b616b;
+  --hairline: #d9dbd5;
+
+  --good: #1d4fd7; /* favourable, on light */
+  --good-on-dark: #a9c1ff;
+  --bad: #b4440b; /* unfavourable, on light */
+  --bad-on-dark: #ffb58a;
+  --secondary-on-dark: #c5c9d0;
+  --hairline-on-dark: #3a3e47;
+
+  --font-title: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-money: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --size-title: 22px;
+  --size-heading: 17px;
+  --size-body: 15px;
+  --size-input: 16px; /* iPhone zooms the page on a field smaller than this */
+  --size-note: 13px;
+  --size-small: 12px;
+  --size-headline: 44px;
+
+  --radius: 6px;
+  --row: 60px; /* minimum row height */
+  --touch: 44px; /* minimum touch target */
+  --gutter: 16px;
+  --screen: 430px; /* phone-first; stays this wide on a laptop */
+}

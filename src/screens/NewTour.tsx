@@ -1,0 +1,263 @@
+// Setting up a new tour in three steps: name it, add the dates, set the
+// rates. The tour is created at the end of step 1 and saved as it is filled
+// in, so setup can be left and picked up again from the tour list.
+
+import { useRef, useState } from 'react';
+import { describeLeg, finishSetup, formatDay, formatNumber, legHome, legInto, newId, routeMiles, unknownLegs, type DateKind, type Place } from '../core';
+import { Back, SelectField, TextField } from '../components';
+import { CityField, MilesField } from '../CityField';
+import { go } from '../router';
+import { useTour, useTours } from '../store';
+import { CommissionsSection, DefaultsSection, FuelSection, VanSection } from './Rates';
+
+const STEPS = ['Name', 'Dates', 'Rates'];
+const KIND_LABEL: Record<DateKind, string> = { show: 'Show', off: 'Off day', travel: 'Travel day' };
+
+function Steps({ step }: { step: 1 | 2 | 3 }) {
+  return (
+    <ol className="steps" aria-label="Setup steps">
+      {STEPS.map((label, i) => (
+        <li key={label} className={i + 1 < step ? 'done' : undefined} aria-current={i + 1 === step ? 'step' : undefined}>
+          {i + 1}. {label}
+          {i + 1 < step && <span className="sr-only">, done</span>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function Discard() {
+  const { tour } = useTour();
+  const { deleteTour } = useTours();
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <button
+      className="btn plain"
+      type="button"
+      onClick={() => {
+        if (!confirm) return setConfirm(true);
+        deleteTour(tour.id);
+        go('/tours');
+      }}
+    >
+      {confirm ? `Tap again to delete ${tour.name || 'this tour'} for good` : 'Discard this tour'}
+    </button>
+  );
+}
+
+export function NameStep() {
+  const { createTour } = useTours();
+  const [name, setName] = useState('');
+  const [home, setHome] = useState('');
+  const [homePlace, setHomePlace] = useState<Place>();
+  const valid = name.trim() !== '';
+
+  return (
+    <main className="screen">
+      <Back to="/tours">Tours</Back>
+      <Steps step={1} />
+      <header className="screen-head">
+        <h1 className="title">Name the tour</h1>
+        <p className="note">Three steps: a name, the dates, then the rates. It is saved as you go, so you can stop and pick it up later.</p>
+      </header>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!valid) return;
+          createTour(name.trim(), home.trim(), homePlace);
+          go('/setup/dates');
+        }}
+      >
+        <TextField label="Tour name" value={name} onChange={setName} note="For example: Summer run" autoFocus />
+        <CityField
+          label="Home city"
+          value={home}
+          place={homePlace}
+          onChange={(city, place) => {
+            setHome(city);
+            setHomePlace(place);
+          }}
+          note="Where you drive from and back to. Start typing and pick it from the list; the miles are worked out from it."
+        />
+        <button className="btn" type="submit" disabled={!valid} style={valid ? undefined : { opacity: 0.5 }}>
+          Next: add the dates
+        </button>
+      </form>
+    </main>
+  );
+}
+
+function nextDay(iso: string): string {
+  return new Date(new Date(iso + 'T00:00:00Z').getTime() + 86400000).toISOString().slice(0, 10);
+}
+
+export function DatesStep() {
+  const { tour, update } = useTour();
+  const last = tour.dates.at(-1);
+
+  const [date, setDate] = useState(last ? nextDay(last.date) : '');
+  const [city, setCity] = useState('');
+  const [place, setPlace] = useState<Place>();
+  const [kind, setKind] = useState<DateKind>('show');
+  const [miles, setMiles] = useState<number | undefined>();
+  const [blocked, setBlocked] = useState(false);
+  const cityInput = useRef<HTMLInputElement>(null);
+
+  const complete = /^\d{4}-\d{2}-\d{2}$/.test(date) && city.trim() !== '';
+  // A city typed with no date is a date half entered; it is never dropped silently.
+  const halfEntered = !complete && city.trim() !== '';
+
+  const add = () => {
+    update((t) => {
+      t.dates.push({ id: newId('date'), date, city: city.trim(), place, kind, milesFromPrevious: miles, merch: { plan: 0 }, lodging: { plan: 0 }, fuelFillUps: [], lines: [], settled: false });
+    });
+    setDate(nextDay(date));
+    setCity('');
+    setPlace(undefined);
+    setKind('show');
+    setMiles(undefined);
+    setBlocked(false);
+  };
+
+  const next = () => {
+    if (halfEntered) return setBlocked(true);
+    if (complete) add();
+    update((t) => {
+      t.setup = 'rates';
+    });
+    go('/setup/rates');
+  };
+
+  return (
+    <main className="screen">
+      <Back to="/tours">Tours</Back>
+      <Steps step={2} />
+      <header className="screen-head">
+        <h1 className="title">Add the dates</h1>
+        <p className="note">
+          {tour.name} {'·'} Add each day of the run: shows, off days and travel days. Pick each city from the list and the drives are worked out for you. Offers are entered later, from the budget.
+        </p>
+      </header>
+
+      {tour.dates.length > 0 && (
+        <ul className="rows" style={{ borderTop: '1px solid var(--ink)' }} aria-label="Dates added so far">
+          {tour.dates.map((d) => (
+            <li className="row" key={d.id}>
+              <span className="name">
+                <span className="label">
+                  {formatDay(d.date)} {'·'} {d.city}
+                </span>
+                <span className="note">
+                  {[KIND_LABEL[d.kind], describeLeg(legInto(tour, d))].filter(Boolean).join(' · ')}
+                </span>
+              </span>
+              <span className="end">
+                <button className="text-btn" type="button" onClick={() => update((t) => (t.dates = t.dates.filter((x) => x.id !== d.id)))}>
+                  Remove<span className="sr-only"> {d.city}</span>
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form
+        className="inline-form"
+        aria-label={tour.dates.length ? 'Add another date' : 'Add the first date'}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!complete) return;
+          add();
+          cityInput.current?.focus();
+        }}
+      >
+        <TextField label="Date" type="date" value={date} onChange={setDate} />
+        <CityField
+          label="City"
+          value={city}
+          place={place}
+          onChange={(c, p) => {
+            setCity(c);
+            setPlace(p);
+          }}
+          note="Start typing and pick it from the list."
+          inputRef={cityInput}
+        />
+        <SelectField
+          label="Kind of day"
+          value={kind}
+          onChange={setKind}
+          options={[
+            ['show', 'Show'],
+            ['off', 'Off day'],
+            ['travel', 'Travel day'],
+          ]}
+        />
+        {city.trim() !== '' && <MilesField label="Miles from the previous stop" value={miles} onChange={setMiles} leg={legInto(tour, { date, city, place, milesFromPrevious: miles })} />}
+        <button className="btn quiet" type="submit" disabled={!complete} style={complete ? undefined : { opacity: 0.5 }}>
+          {tour.dates.length ? 'Add another date' : 'Add this date'}
+        </button>
+      </form>
+
+      {tour.dates.length > 0 && (
+        <>
+          <MilesField label="Miles home from the last date" value={tour.milesHome} onChange={(v) => update((t) => (t.milesHome = v))} leg={legHome(tour)} />
+          <p className="note" style={{ marginTop: 16 }}>
+            Route so far: {formatNumber(routeMiles(tour))} mi{unknownLegs(tour) ? `, with ${unknownLegs(tour)} ${unknownLegs(tour) === 1 ? 'drive' : 'drives'} not counted because the miles are not known` : ''}.
+          </p>
+        </>
+      )}
+
+      {blocked && halfEntered && (
+        <p className="note bad" role="alert" style={{ marginTop: 16 }}>
+          {city.trim()} has no date yet. Give it a date, or clear the city, before going on.
+        </p>
+      )}
+      <button className="btn" type="button" onClick={next}>
+        Next: set the rates
+      </button>
+      {tour.dates.length === 0 && !complete && (
+        <p className="note" style={{ marginTop: 8 }}>
+          No dates yet? You can go on and add them later under Dates.
+        </p>
+      )}
+      <Discard />
+    </main>
+  );
+}
+
+export function RatesStep() {
+  const { tour, update } = useTour();
+  const count = tour.dates.length;
+
+  return (
+    <main className="screen">
+      <Back to="/setup/dates">Dates</Back>
+      <Steps step={3} />
+      <header className="screen-head">
+        <h1 className="title">Set the rates</h1>
+        <p className="note">
+          {tour.name} {'·'} {count} {count === 1 ? 'date' : 'dates'}. Every field already has a figure, shown in grey: worked out from your dates, or estimated for this route. Type over one only where you know better.
+        </p>
+        {tour.ratesFrom && <p className="note">Commissions, van and merch figures were started from {tour.ratesFrom}.</p>}
+      </header>
+
+      <CommissionsSection />
+      <VanSection planning />
+      <FuelSection planning />
+      <DefaultsSection planning />
+
+      <button
+        className="btn"
+        type="button"
+        onClick={() => {
+          update(finishSetup);
+          go('/budget/plan');
+        }}
+      >
+        Finish and see the budget
+      </button>
+      <Discard />
+    </main>
+  );
+}
